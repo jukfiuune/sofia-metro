@@ -55,7 +55,9 @@ def build(db_path, gtfs_zip):
         if prev and prev[0] == day and prev[1] == trip and prev[2] == seq - 1 and prev[4] is not None and arr is not None:
             run = arr - prev[4]
             length = lengths.get((trip, seq))
-            if 5 <= run <= 3600 and length:
+            # Runs faster than 90 km/h are measurement errors (e.g. a route looping back
+            # past a stop); dropping them keeps the free-flow estimate honest.
+            if 5 <= run <= 3600 and length and length / run <= 25:
                 hour = dt.datetime.fromtimestamp(prev[4], TZ).hour
                 # Different routes can join the same two stops by different paths, so the
                 # key includes the path length (to 25 m): "A>B|L".

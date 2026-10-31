@@ -21,6 +21,7 @@ Model (all invented; only the timetable and shapes are real):
 
 Usage:
     python3 analysis/fake.py --gtfs path/to/static.zip --date 2026-11-02 [--days 7] [--out recordings-fake]
+                             [--routes 94 213 5]   # small test set: only these lines
 """
 import argparse
 import datetime as dt
@@ -185,12 +186,14 @@ def assign_fleet(vehicles, rnd):
         v["code"] = f"{PREFIX[v['kind']]}{pool[v['kind']].pop():04d}"
 
 
-def generate(day, date, out, net, seed):
+def generate(day, date, out, net, seed, routes=None):
     rnd = random.Random(f"{seed}|{date}")
     weekday = date.weekday()
     midnight = dt.datetime.combine(date, dt.time(0), TZ).timestamp()
     vehicles = []
     for block, tids in sorted(day["blocks"].items()):
+        if routes and not any(day["routes"][day["trips"][t]["route"]]["name"] in routes for t in tids):
+            continue
         kind = day["routes"][day["trips"][tids[0]]["route"]]["kind"]
         fx, fy = gtfs.to_xy(*day["stops"][day["trips"][tids[0]]["stops"][0]][:2])
         name, depot = min(((n, d) for n, d in DEPOTS.items() if d[0] == kind),
@@ -235,6 +238,7 @@ def main():
     ap.add_argument("--days", type=int, default=1)
     ap.add_argument("--out", default=str(HERE.parent / "recordings-fake"))
     ap.add_argument("--seed", default="sofia")
+    ap.add_argument("--routes", nargs="*", help="only duties that run these line numbers (small test sets)")
     args = ap.parse_args()
     out = Path(args.out)
     (out / "gtfs").mkdir(parents=True, exist_ok=True)
@@ -245,6 +249,9 @@ def main():
 
     truth = {"depots": {n: {"kind": k, "lat": la, "lon": lo} for n, (k, la, lo) in DEPOTS.items()},
              "segments": {}, "vehicles": {}, "model": __doc__}
+    if (out / "truth.json").exists():          # adding days to an existing fake recording
+        old = json.loads((out / "truth.json").read_text(encoding="utf-8"))
+        truth["segments"], truth["vehicles"] = old.get("segments", {}), old.get("vehicles", {})
     net = None
     for k in range(args.days):
         date = dt.date.fromisoformat(args.date) + dt.timedelta(days=k)
@@ -252,7 +259,7 @@ def main():
         if net is None:
             net = Network(day)
         net.day = day
-        vehicles, polls = generate(day, date, out, net, args.seed)
+        vehicles, polls = generate(day, date, out, net, args.seed, set(args.routes or []))
         for v in vehicles:
             truth["vehicles"].setdefault(date.isoformat(), {})[v["code"]] = {"block": v["block"], "depot": v["depot"]}
         print(f"{date}: {len(vehicles)} vehicles, {polls} polls")

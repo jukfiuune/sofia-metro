@@ -84,14 +84,51 @@ class Cursor:
         return s
 
 
-def crossing(track, target):
-    """Time at which the (time, s) track first reaches distance `target`, or None."""
-    for (t0, s0), (t1, s1) in zip(track, track[1:]):
+def crossing(track, target, start=0):
+    """Time at which the (time, s) track first reaches distance `target` (looking from
+    index `start`), or None."""
+    for k in range(max(0, start), len(track) - 1):
+        (t0, s0), (t1, s1) = track[k], track[k + 1]
         if s1 >= target:
             if s0 >= target:
                 return t0
             return t0 + (t1 - t0) * (target - s0) / (s1 - s0)
     return None
+
+
+ZONE = 60.0        # m around a stop where a standing vehicle counts as standing at it
+STILL = 3.0        # m between fixes that counts as standing still
+
+
+def standing(track, d, hi):
+    """Indices of the first and last standing fixes within the stop's zone [d - ZONE, hi]."""
+    first = last = None
+    for k in range(1, len(track)):
+        (t0, s0), (t1, s1) = track[k - 1], track[k]
+        if s1 - s0 < STILL and t1 > t0 and d - ZONE <= s1 <= hi:
+            if first is None:
+                first = k - 1
+            last = k
+        elif s1 > hi:
+            break
+    return first, last
+
+
+def stop_times(track, d, prev_d, next_d):
+    """(arrival, departure) at a stop at distance d. A vehicle standing near the stop
+    counts as at it even where the stop's coordinates sit a little off the route, so
+    a wait is never mistaken for driving to the next stop."""
+    hi = d + ZONE if next_d is None else min(d + ZONE, (d + next_d) / 2)
+    lo_ok = prev_d is None or d - ZONE > (d + prev_d) / 2
+    first, last = standing(track, d if lo_ok else max(d, (d + prev_d) / 2 + ZONE), hi)
+    arr = crossing(track, d - R)
+    dep = crossing(track, d + R)
+    if first is not None:
+        t_first = track[first][0]
+        arr = t_first if arr is None else min(arr, t_first)
+        moved = crossing(track, track[last][1] + R, last)
+        dep = moved if moved is not None else dep
+    return arr, dep
 
 
 def trip_passages(trip, fixes, shape):
@@ -113,8 +150,11 @@ def trip_passages(trip, fixes, shape):
     for i, d in enumerate(trip["d"]):
         if d < first - R and i > 0 or d > last + R:
             continue                                # not covered by the recording
-        arr = None if i == 0 else crossing(track, d - R)
-        dep = None if i == n - 1 else crossing(track, d + R)
+        arr, dep = stop_times(track, d, trip["d"][i - 1] if i else None, trip["d"][i + 1] if i < n - 1 else None)
+        if i == 0:
+            arr = None
+        if i == n - 1:
+            dep = None
         if arr is None and dep is None:
             continue
         out.append((i, arr, dep))
@@ -131,28 +171,40 @@ def analyse_day(path, gtfs_zip, out_db):
     tt = gtfs.load_day(gtfs_zip, day.replace("-", ""))
     midnight = day_midnight(day)
     db = open_day(path)
+    # Rows come ordered by vehicle and time, so each vehicle's trip is a contiguous run:
+    # process it as soon as it ends instead of holding the whole day in memory.
     rows = db.execute(
         "SELECT v.code, t.code, p.ts, p.lat, p.lon FROM pos p JOIN veh v ON v.id = p.veh JOIN trip t ON t.id = p.trip "
         "ORDER BY p.veh, p.ts")
-    groups = defaultdict(list)
-    for veh, trip, ts, lat, lon in rows:
-        if trip in tt["trips"]:
-            groups[(veh, trip)].append((ts, *gtfs.to_xy(lat / 1e6, lon / 1e6)))
-    db.close()
     out_db.execute("DELETE FROM passage WHERE day = ?", (day,))
-    count = 0
-    for (veh, tid), fixes in groups.items():
+    count = groups = 0
+
+    def flush(veh, tid, fixes):
+        nonlocal count, groups
         trip = tt["trips"][tid]
-        shape = tt["shapes"][trip["shape"]]
-        res = trip_passages(trip, fixes, shape)
+        res = trip_passages(trip, fixes, tt["shapes"][trip["shape"]])
         out_db.executemany("INSERT OR REPLACE INTO passage VALUES (?,?,?,?,?,?,?,?,?,?)", [
             (day, veh, tid, trip["route"], trip["shape"], i, trip["stops"][i],
              int(midnight + (trip["arr"][i] if i else trip["dep"][0])), arr, dep) for i, arr, dep in res])
         count += len(res)
+        groups += 1
+
+    key, fixes = None, []
+    for veh, trip, ts, lat, lon in rows:
+        if trip not in tt["trips"]:
+            continue
+        if (veh, trip) != key:
+            if key:
+                flush(*key, fixes)
+            key, fixes = (veh, trip), []
+        fixes.append((ts, *gtfs.to_xy(lat / 1e6, lon / 1e6)))
+    if key:
+        flush(*key, fixes)
+    db.close()
     secs = time.time() - started
-    out_db.execute("INSERT OR REPLACE INTO done VALUES (?,?,?,?)", (day, len(groups), count, secs))
+    out_db.execute("INSERT OR REPLACE INTO done VALUES (?,?,?,?)", (day, groups, count, secs))
     out_db.commit()
-    return len(groups), count, secs
+    return groups, count, secs
 
 
 def main():
@@ -172,6 +224,8 @@ def main():
     for f in files:
         trips, n, secs = analyse_day(f, gz, out)
         print(f"{f.stem[4:]}: {trips} vehicle-trips, {n:,} stop passages ({secs:.0f} s)")
+    import resource
+    print(f"peak memory {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.0f} MB")
 
 
 if __name__ == "__main__":

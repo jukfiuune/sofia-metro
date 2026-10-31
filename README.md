@@ -86,11 +86,18 @@ python3 analysis/depots.py --dir recordings-fake --out analysis/out/fake-depots.
 python3 analysis/validate.py --fake recordings-fake --profiles analysis/out/fake-profiles.json --depots analysis/out/fake-depots.json
 ```
 
-**Accuracy on one fake weekday:**
-- **Depots:** all 10 found within 3 m.
-- **Congestion, grouped by true slow-down:** the measured slow-down matches the truth: ×1.09 for true ×1.0–1.1, ×1.21 for ×1.1–1.25, ×1.35 for ×1.25–1.5, ×1.57 for ×1.5–2.0, ×1.99 for ×2+.
-- **Bus lanes:** the effect shows without the analysis being told where the lanes are (peak ×1.18 with a lane against ×1.25 without).
-- **Single stretches:** individual stretch-hours are still noisy after one day, with only 2–6 runs each.
+**Accuracy on a fake week (Monday to Sunday):**
+- **Depots:** all 10 found within 2 m.
+- **Congestion, grouped by true slow-down:** measured ×1.09 for true ×1.0–1.1, ×1.20 for ×1.1–1.25, ×1.34 for ×1.25–1.5, ×1.55 for ×1.5–2.0, ×1.98 for ×2+.
+- **Single stretches:** correlation 0.48 across all weekday stretch-hours with 2+ runs, and 0.71 without the 0.16% of stretch-hours that are still measurement outliers.
+- **Bus lanes:** found without the analysis being told where they are (peak ×1.17 with a lane against ×1.23 without).
+
+**Fixes this validation found, which apply to real data too:**
+- **Stop placement:** stops near terminal loops were placed at the route's first close pass. That also corrected the live map's data for lines 76, 78, 79, 183, 213 and N1.
+- **Waiting vehicles:** a vehicle waiting at a stop whose coordinates sit slightly off the route was counted as driving to the next stop.
+- **Impossible runs:** runs faster than 90 km/h are dropped as errors.
+
+**Memory:** `passages.py` streams one vehicle trip at a time, peaking at about 300 MB for a full day (it used to need about 1 GB).
 
 ## Performance
 
