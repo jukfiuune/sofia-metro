@@ -247,7 +247,30 @@
   }
   setInterval(poll, POLL);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
-  ST.on("clock", () => { updateFeedState(); poll(); });
+  // Leaving real time (speed-up or a later time today): hand each live vehicle over to
+  // its forecast, keeping its marker id, model and position, so nothing jumps.
+  let wasRealtime = true;
+  ST.on("clock", () => {
+    const realtime = ST.clock.isRealtime();
+    if (wasRealtime && !realtime && ST.sim) {
+      const now = Date.now(), byDuty = new Map();
+      for (const v of vehicles.values()) {
+        if (!v.tripId || (feedTime - v.fixes.at(-1).t) / 1000 > LOST) continue;
+        // Start exactly where the vehicle is drawn now (LAG behind its latest fix).
+        const fc = v.sDisp != null ? ST.sim.forecast(v.tripId, v.sDisp, now - LAG) : forecastOf(v);
+        const duty = ST.sim.dutyOfTrip(v.tripId, now);
+        if (!fc || !duty) continue;
+        Object.assign(fc, { id: v.id, live: v, model: v.model, kindBase: v.kindBase, name: duty.name, duty: duty.duty });
+        byDuty.set(duty.name, fc);
+      }
+      const [date, sec] = ST.sim.serviceDay(now);
+      ST.sim.setHandover(date, sec - LAG / 1000, byDuty);
+      // Live vehicles are drawn LAG behind real time; start the simulated clock there too.
+      if (Math.abs(ST.clock.now() - now) < 2000) ST.clock.set(now - LAG, ST.clock.speed);
+    }
+    wasRealtime = realtime;
+    updateFeedState(); poll();
+  });
   poll();
 
   // ---------- Trip updates (arrival predictions), fetched on demand ----------
@@ -663,8 +686,10 @@
     return html;
   }
 
+  const isSimId = id => id.startsWith("sim:") || (!ST.clock.isRealtime() && !!lastSim && lastSim.has(id));
+
   function vehicleCard(id) {
-    if (id.startsWith("sim:")) return simCard(id);
+    if (isSimId(id)) return simCard(id);
     const v = vehicles.get(id);
     if (!v) return null;
     const r = ROUTES[v.routeId], p = v.pattern;
@@ -728,7 +753,7 @@
   }
 
   function openVehicle(id) {
-    const sim = id.startsWith("sim:");
+    const sim = isSimId(id);
     const v = sim ? lastSim && lastSim.get(id) : vehicles.get(id);
     if (!v) return;
     selectedId = id;
@@ -842,7 +867,7 @@
     if (action === "live-stop") openStop(data.id);
     else if (action === "live-line") openLine(data.line);
     else if (action === "live-veh") {
-      const v = data.id.startsWith("sim:") ? lastSim && lastSim.get(data.id) : vehicles.get(data.id);
+      const v = isSimId(data.id) ? lastSim && lastSim.get(data.id) : vehicles.get(data.id);
       if (v) { openVehicle(data.id); ST.focus(v.ll || [v.fixes.at(-1).lat, v.fixes.at(-1).lon]); }
     }
   });

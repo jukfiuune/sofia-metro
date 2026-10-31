@@ -90,6 +90,8 @@ In real time the simulation also loads in the background, a couple of seconds af
 - **Stop cards:** add forecast departures (≈) for duties the official predictions don't cover yet.
 - **Duties without GPS (Map panel, off by default):** scheduled vehicles that aren't in the live feed, drawn hollow and dashed. On a Saturday afternoon about 12% of scheduled duties (53 of 445) had no live vehicle, spread across many lines: cancellations, missing GPS units or timing differences.
 
+- **Speed-up from "Now":** pressing 10× (or any speed) hands every live vehicle over to its forecast, starting exactly where it is drawn, with the same marker, model and body. In a test, 388 of 390 live vehicles continued without moving at the switch, 99% of them by 0 m. Scheduled duties without a live vehicle continue from the plain simulation.
+
 Each forecast takes about 0.7 ms and is computed only when needed, then cached until that vehicle's next GPS fix.
 
 ## Analysis (planner branch)

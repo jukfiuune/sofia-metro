@@ -209,11 +209,20 @@
     return sec >= DAY_START ? [ST.ymd(p.year, p.month, p.day), sec] : [ST.shiftDay(p, -1), sec + 86400];
   }
 
+  // When the clock leaves real time, live vehicles carry on from their real positions:
+  // their forecasts replace their duties' plans from that moment on.
+  let handover = null;      // {date, sec, byDuty: Map(duty name -> forecast vehicle)}
+  function setHandover(date, sec, byDuty) { handover = byDuty && byDuty.size ? { date, sec, byDuty } : null; }
+
   function vehiclesAt(ms) {
     const [date, sec] = serviceDay(ms);
     const day = dutiesFor(date);
+    const ho = handover && handover.date === date && sec >= handover.sec ? handover.byDuty : null;
     const out = [];
-    for (const v of day.list) if (stateAt(v, sec)) { v.sec = sec; out.push(v); }
+    for (const base of day.list) {
+      const v = (ho && ho.get(base.name)) || base;
+      if (stateAt(v, sec)) { v.sec = sec; out.push(v); }
+    }
     return out;
   }
 
@@ -275,6 +284,6 @@
     return day.byName.get(`${route}${run}${svc}`) || day.byName.get(`${route}-run${run}`) || null;
   }
 
-  ST.sim = { ready: true, label: S.label, depots, vehiclesAt, departures, parkedAt, serviceDay, dutiesFor, dutyOfTrip, forecast, stateAt };
+  ST.sim = { ready: true, label: S.label, depots, vehiclesAt, departures, parkedAt, serviceDay, dutiesFor, dutyOfTrip, forecast, stateAt, setHandover };
   ST.emit("sim");
 })();
