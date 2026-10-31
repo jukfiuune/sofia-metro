@@ -51,7 +51,7 @@ def main():
 
     est, true, errs, by_lane = [], [], [], {True: [], False: []}
     for seg, p in prof["segments"].items():
-        t = truth["segments"].get(seg)
+        t = truth["segments"].get(seg.split("|")[0])
         if not t or "wd" not in p or p["free"] <= 0:
             continue
         for hour, (median, n) in p["wd"].items():

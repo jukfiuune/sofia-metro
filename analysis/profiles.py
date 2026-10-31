@@ -2,15 +2,15 @@
 """Travel-time profiles per stop-to-stop segment, by day type and hour.
 
 From analysis/out/passages.sqlite: the run time of each segment (left stop A ->
-reached stop B) and the dwell at each stop. For every segment and (day type,
+reached stop B, along a path of length L) and the dwell at each stop. For every segment and (day type,
 hour) it keeps the median run time; the free-flow time is the 10th percentile
 over all hours. congestion = median / free-flow (1.0 = empty roads).
 
 Writes analysis/out/profiles.json:
-  {"segments": {"A>B": {"free": s, "n": count, "wd": {hour: [median_s, n]}, "sat": {...}, "sun": {...}}},
+  {"segments": {"A>B|L": {"free": s, "n": count, "wd": {hour: [median_s, n]}, "sat": {...}, "sun": {...}}},
    "dwell": {stop: {"wd": {hour: median_s}}}}
 
-    python3 analysis/profiles.py [--db analysis/out/passages.sqlite]
+    python3 analysis/profiles.py [--db analysis/out/passages.sqlite] [--dir recordings]
 """
 import argparse
 import datetime as dt
@@ -30,8 +30,20 @@ def daytype(day):
     return "wd" if wd < 5 else "sat" if wd == 5 else "sun"
 
 
-def build(db_path):
+def seg_lengths(db, gtfs_zip):
+    """(trip, seq) -> metres from the previous stop, from the timetable of each day."""
+    import gtfs
+    out = {}
+    for (day,) in db.execute("SELECT DISTINCT day FROM passage"):
+        for tid, t in gtfs.load_day(gtfs_zip, day.replace("-", ""))["trips"].items():
+            for i in range(1, len(t["d"])):
+                out[(tid, i)] = t["d"][i] - t["d"][i - 1]
+    return out
+
+
+def build(db_path, gtfs_zip):
     db = sqlite3.connect(db_path)
+    lengths = seg_lengths(db, gtfs_zip)
     runs = defaultdict(lambda: defaultdict(list))      # seg -> (daytype, hour) -> [seconds]
     dwells = defaultdict(lambda: defaultdict(list))
     prev = None
@@ -42,9 +54,12 @@ def build(db_path):
             dwells[stop][(dtp, dt.datetime.fromtimestamp(arr, TZ).hour)].append(dep - arr)
         if prev and prev[0] == day and prev[1] == trip and prev[2] == seq - 1 and prev[4] is not None and arr is not None:
             run = arr - prev[4]
-            if 5 <= run <= 3600:
+            length = lengths.get((trip, seq))
+            if 5 <= run <= 3600 and length:
                 hour = dt.datetime.fromtimestamp(prev[4], TZ).hour
-                runs[f"{prev[3]}>{stop}"][(dtp, hour)].append(run)
+                # Different routes can join the same two stops by different paths, so the
+                # key includes the path length (to 25 m): "A>B|L".
+                runs[f"{prev[3]}>{stop}|{round(length / 25) * 25}"][(dtp, hour)].append(run)
         prev = (day, trip, seq, stop, dep)
     segments = {}
     for seg, buckets in runs.items():
@@ -64,9 +79,13 @@ def build(db_path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=str(HERE / "out" / "passages.sqlite"))
+    ap.add_argument("--dir", default=str(HERE.parent / "recordings"), help="recording dir (for its timetable copy)")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
-    prof = build(args.db)
+    import sys
+    sys.path.insert(0, str(HERE))
+    import gtfs
+    prof = build(args.db, gtfs.latest_gtfs(args.dir))
     out = Path(args.out or Path(args.db).with_name(Path(args.db).stem.replace("passages", "profiles") + ".json"))
     out.write_text(json.dumps(prof, separators=(",", ":")), encoding="utf-8")
     print(f"{len(prof['segments'])} segments, {len(prof['dwell'])} stops with dwell data -> {out}")

@@ -73,7 +73,7 @@ Scripts in `analysis/` turn recordings into the data the simulation and route pl
 |---|---|
 | `fake.py` | A fake recording: vehicles drive their real timetable duties through an invented traffic model (morning and evening peaks, worse near the centre, milder on bus-lane stretches and for trams), with stop dwells, late departures, layovers and depot runs. It is written through the recorder's own storage code, plus `truth.json` with the answers: depots, each stretch's congestion and bus lanes. About 1 minute per day. |
 | `passages.py` | `out/passages.sqlite`: when each vehicle arrived at and left each stop of each trip, from fixes snapped to the trip's route shape. About 2 minutes per day. |
-| `profiles.py` | `out/profiles.json`: per stop-to-stop stretch, the free-flow run time (10th percentile) and the median run time by day type (weekday / Saturday / Sunday) and hour; plus dwell times per stop. |
+| `profiles.py` | `out/profiles.json`: per stop-to-stop stretch (stop pair plus path length, since routes can join two stops by different paths), the free-flow run time (10th percentile) and the median run time by day type (weekday / Saturday / Sunday) and hour; plus dwell times per stop. |
 | `depots.py` | `out/depots.json`: places where several vehicles stand for 10+ minutes without a trip, with the vehicle kinds and pull-out / pull-in times. |
 | `validate.py` | Compares the analysis of a fake recording with its answer key. |
 | `gtfs.py` | Shared timetable loader for one service day (cached). |
@@ -81,7 +81,7 @@ Scripts in `analysis/` turn recordings into the data the simulation and route pl
 ```bash
 python3 analysis/fake.py --gtfs recordings/gtfs/<file>.zip --date 2026-11-02 --days 5 --out recordings-fake
 python3 analysis/passages.py --dir recordings-fake --out analysis/out/fake-passages.sqlite
-python3 analysis/profiles.py --db analysis/out/fake-passages.sqlite
+python3 analysis/profiles.py --db analysis/out/fake-passages.sqlite --dir recordings-fake
 python3 analysis/depots.py --dir recordings-fake --out analysis/out/fake-depots.json
 python3 analysis/validate.py --fake recordings-fake --profiles analysis/out/fake-profiles.json --depots analysis/out/fake-depots.json
 ```

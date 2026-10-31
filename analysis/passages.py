@@ -51,7 +51,12 @@ class Cursor:
         sh = self.sh
         n = len(sh.xy) - 1
         if self.k is None:
-            s, err = sh.project(x, y)
+            # Prefer the start of the route: at terminal loops the first and second stops
+            # can be metres apart on the ground but far apart along the route, and a
+            # vehicle waiting at the first stop must not count as being at the second.
+            s, err = sh.project(x, y, 0.0, 400.0)
+            if err > SNAP:
+                s, err = sh.project(x, y)
         else:
             lo = max(0, self.k - 3)
             limit = sh.cum[self.k] + AHEAD
