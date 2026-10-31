@@ -145,8 +145,11 @@ def route_on_tracks(routes, stops, shapes, patterns, trips, calendars, lat0, ref
         for pi, p in enumerate(patterns):
             if depot_station.get((p["route"], p["stops"][-1])) == key and p["s1"] not in ins:
                 ins[p["s1"]] = [net.to_depot(states[p["s1"]], sl) for sl in slots]
+        inbound = {(min(a, b), max(a, b)) for v in ins.values() for i in v if i is not None
+                   for a, b in zip(net.paths[i][0], net.paths[i][0][1:])}
+        for pi, p in enumerate(patterns):
             if depot_station.get((p["route"], p["stops"][0])) == key and p["s0"] not in outs:
-                outs[p["s0"]] = [net.from_depot(sl, states[p["s0"]]) for sl in slots]
+                outs[p["s0"]] = [net.from_depot(sl, states[p["s0"]], avoid=inbound) for sl in slots]
         # Keep only yard tracks reachable for every move in and out.
         moves = list(ins.values()) + list(outs.values())
         keep = [i for i in range(len(slots)) if all(v[i] is not None for v in moves)]

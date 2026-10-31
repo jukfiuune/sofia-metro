@@ -203,9 +203,11 @@ class Network:
         r = self.g.route(a, None, h_start=ha, goal_any={slot}, max_rev=3, rev_cost=60.0, allow=lambda s: True)
         return None if r is None else self.add_path(*r)
 
-    def from_depot(self, slot, start):
+    def from_depot(self, slot, start, avoid=None):
+        """Path out of the yard; `avoid` (the tracks trains come in on) is used only where
+        there is no parallel track, so trains going in and out don't share a single line."""
         b, hb = start
-        r = self.g.route(slot, b, h_goal=hb, max_rev=3, rev_cost=60.0, allow=lambda s: True)
+        r = self.g.route(slot, b, h_goal=hb, max_rev=3, rev_cost=60.0, allow=lambda s: True, avoid=avoid)
         return None if r is None else self.add_path(*r)
 
     def stable_spots(self):
