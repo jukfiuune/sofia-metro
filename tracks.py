@@ -176,12 +176,13 @@ class Graph:
 
     # ---- routing ----
     def route(self, start, goal, *, h_start=None, h_goal=None, max_rev=0, rev_cost=60.0,
-              allow=lambda svc: svc not in NON_REVENUE, penalty=None, goal_any=None, max_len=1e9):
+              allow=lambda svc: svc not in NON_REVENUE, penalty=None, goal_any=None, max_len=1e9, avoid=None):
         """Shortest switch-feasible path.
 
         start/h_start: start node and unit heading (None = any direction).
         goal/h_goal:   goal node and heading the train must be facing on arrival
                        (None = any). goal_any: alternatively a set of goal nodes.
+        avoid:         edges (min node, max node) to use only where there is no other way.
         Returns (node list, [indices in the list where the train reverses]) or None.
         """
         goals = goal_any if goal_any is not None else {goal}
@@ -207,7 +208,8 @@ class Graph:
                 heapq.heappush(heap, (cost, st))
 
         def edge_cost(v, w):
-            return self.dist(v, w) * (penalty(self.adj[v][w]) if penalty else 1.0)
+            c = self.dist(v, w) * (penalty(self.adj[v][w]) if penalty else 1.0)
+            return c * 4.0 if avoid and (min(v, w), max(v, w)) in avoid else c
 
         def expand_from(v, h, cost, nrev, parent):
             for w, svc in self.adj[v].items():
