@@ -32,20 +32,20 @@ OUT = Path(__file__).resolve().parent / "data" / "metro.js"
 OSM_CACHE = Path(__file__).resolve().parent / "data" / "osm_tracks.json"
 YARD_END = 4.0      # m kept clear before a stabling track's buffer stop
 YARD_GAP = 8.0      # m between trains parked one behind the other
-YARD_MAX = 4        # trains per stabling track at most
 
 # Depots (the GTFS feed has none). `stations` lists, per line, the stop_ids from
 # which trains run to / from the depot; lat/lon is the yard centre used to find
 # its stabling tracks in OSM; `train` is the longest train it keeps (m), which sets
-# how many trains fit one behind the other on each stabling track. Runs that start or end anywhere else are stabled
+# how many trains fit one behind the other on each stabling track, at most `per_track`. Runs that start or end anywhere else are stabled
 # overnight on the nearest siding / tail track of that station.
 DEPOTS = {
     "obelya": {
-        "name": "Метродепо „Обеля“", "en": "Obelya depot", "lat": 42.7330, "lon": 23.2624, "train": 84.0,
+        # 26 stabling tracks with room for two trains each (fizik, forum.gtsofia.info topic 1038, 2011).
+        "name": "Метродепо „Обеля“", "en": "Obelya depot", "lat": 42.7330, "lon": 23.2624, "train": 84.0, "per_track": 2,
         "stations": {"M1": ["M1"], "M4": ["M1"], "M2": ["M0"]},
     },
     "zemlyane": {
-        "name": "Метродепо „Земляне“", "en": "Zemlyane depot (M3)", "lat": 42.6815, "lon": 23.2762, "train": 61.0,
+        "name": "Метродепо „Земляне“", "en": "Zemlyane depot (M3)", "lat": 42.6815, "lon": 23.2762, "train": 61.0, "per_track": 3,
         "stations": {"M3": ["M315", "M314"]},
     },
 }
@@ -134,7 +134,7 @@ def route_on_tracks(routes, stops, shapes, patterns, trips, calendars, lat0, ref
     depot_station = {}
     for key, dp in DEPOTS.items():
         tracks = [(e, int((length - YARD_END) // (dp["train"] + YARD_GAP))) for e, length in net.depot_slots(dp)]
-        tracks = [(e, min(cap, YARD_MAX)) for e, cap in tracks if cap >= 1]
+        tracks = [(e, min(cap, dp["per_track"])) for e, cap in tracks if cap >= 1]
         if not tracks:
             raise SystemExit(f"no yard tracks found for depot {key}")
         slots = [e for e, _ in tracks]
@@ -163,16 +163,21 @@ def route_on_tracks(routes, stops, shapes, patterns, trips, calendars, lat0, ref
             "slots": slots, "cap": caps, "pitch": dp["train"] + YARD_GAP, "end": YARD_END, "in": ins, "out": outs,
         }
 
+    # Overnight stabling away from the depots: every siding / tail track end near a
+    # terminal, with how much plain track it has before the first switch.
     spots = net.stable_spots()
     stable_in, stable_out = {}, {}
+    # Depot stations too: trains stay out there on nights the depot is full.
     for pi in lasts:
         p = patterns[pi]
-        if (p["route"], p["stops"][-1]) not in depot_station and p["s1"] not in stable_in:
-            stable_in[p["s1"]] = net.to_stable(states[p["s1"]], spots)
+        if p["s1"] not in stable_in:
+            stable_in[p["s1"]] = net.to_stables(states[p["s1"]], spots)
     for pi in firsts:
         p = patterns[pi]
-        if (p["route"], p["stops"][0]) not in depot_station and p["s0"] not in stable_out:
-            stable_out[p["s0"]] = net.from_stable(states[p["s0"]], spots)
+        if p["s0"] not in stable_out:
+            stable_out[p["s0"]] = net.from_stables(states[p["s0"]], spots)
+    used = {net.paths[i][0][-1] for v in stable_in.values() for i in v} | {net.paths[i][0][0] for v in stable_out.values() for i in v}
+    stable_room = {s: round(net.spot_room(s), 1) for s in sorted(used)}
 
     # Which lines use each track (for colouring) and a representative line path.
     route_edges = defaultdict(set)
@@ -206,7 +211,7 @@ def route_on_tracks(routes, stops, shapes, patterns, trips, calendars, lat0, ref
         "profiles": profiles,
         "turns": turns,
         "depots": depots,
-        "stable": {"in": stable_in, "out": stable_out},
+        "stable": {"in": stable_in, "out": stable_out, "room": stable_room},
         "station_pos": station_pos,
     }
 

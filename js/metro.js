@@ -273,8 +273,8 @@
     return { yard, outside: [] };
   }
 
-  const llDist = (a, b) => Math.hypot((a[1] - b[1]) * KX, (a[0] - b[0]) * KY);
-  const legLL = leg => pathAt(leg.P, leg.d).ll;
+  const stationOf = stop => (D.stations[stop] && D.stations[stop].parent) || stop;
+  const lineDepot = route => D.depots[Object.keys(D.depots).find(k => D.depots[k].stations[route])];
 
   /** Play one service day out from the yard state at its start: gives every run its set
    *  and every depot stay its place; returns the vehicles (runs and spares) and the yard
@@ -319,20 +319,21 @@
       }
       return null;
     }
-    /** A train stabled outside for run v: the one standing at v's place on its siding,
-     *  else another on that siding, else the nearest. */
-    function fromOutside(v, leg) {
-      let best = null;
-      const ll = leg && legLL(leg);
-      for (const o of outside) {
-        if (!o.set.lines.includes(v.route)) continue;
-        const d = o.spot != null && leg && o.spot === leg.spot ? Math.abs(o.k - v.stableOut) - 1e7
-          : o.ll && ll ? llDist(o.ll, ll) : 1e7;
-        if (!best || d < best[0]) best = [d, o];
-      }
-      if (!best) return null;
-      outside.splice(outside.indexOf(best[1]), 1);
-      return best[1].set;
+    // Trains that spent the night away from a depot wait at their station in the order
+    // they can leave: those at a platform first, then the front train of each tail track.
+    const waiting = new Map();
+    for (const o of outside) if (o.station) waiting.set(o.station, [...(waiting.get(o.station) || []), o]);
+    for (const list of waiting.values()) list.sort((a, b) => (b.plat != null) - (a.plat != null) || b.k - a.k);
+    const loose = outside.filter(o => !o.station);        // sets with no known place yet
+    /** The train waiting at `station` that run v can take first (one allowed on its line). */
+    function fromStation(v, station) {
+      const list = waiting.get(station) || [];
+      const i = list.findIndex(o => o.set.lines.includes(v.route));
+      return i < 0 ? null : list.splice(i, 1)[0];
+    }
+    function fromLoose(v) {
+      const i = loose.findIndex(o => o.set.lines.includes(v.route));
+      return i < 0 ? null : loose.splice(i, 1)[0].set;
     }
     /** Place for a train arriving at `depot` that leaves again at t1 (Infinity: not today). */
     function park(depot, v, t1) {
@@ -348,36 +349,25 @@
       return best;
     }
 
-    // Trains stabled outside the depots stand one behind another on their siding: in the
-    // evening in order of arrival, in the morning the first to leave at the front.
-    const sidings = (pick, order, field) => {
-      const by = new Map();
-      for (const v of runs) {
-        const leg = pick(v);
-        if (leg.kind === "hold" && leg.spot != null) by.set(leg.spot, [...(by.get(leg.spot) || []), [v, leg]]);
-      }
-      for (const list of by.values()) list.sort(order).forEach(([v], k) => { v[field] = k; });
-    };
-    sidings(v => v.legs[0], (a, b) => b[1].t1 - a[1].t1, "stableOut");
-    sidings(v => v.legs.at(-1), (a, b) => a[1].t0 - b[1].t0, "stableIn");
-
     // Moves in and out of the yards, in time order (departures first at the same moment).
     const events = [];
     for (const v of runs) {
       v.parks = []; v.startAt = v.endAt = undefined; v.set = null;
       const first = v.legs[0];
-      if (first.kind !== "depot") events.push([DAY_START, 0, v, -1]);
+      if (first.kind !== "depot") events.push([DAY_START, -1, v, -1, first.t1]);
       v.stays.forEach((s, j) => {
         if (s.t0 > DAY_START) events.push([s.t0, 1, v, j]);
         if (s.t1 < DAY_END) events.push([s.t1, 0, v, j]);
       });
     }
-    events.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    events.sort((a, b) => a[0] - b[0] || a[1] - b[1] || (a[4] || 0) - (b[4] || 0));
     const endOutside = [];
     for (const [t, arrive, v, j] of events) {
       const s = v.stays[j];
-      if (j < 0) {                                  // starts the day stabled outside a depot
-        v.set = fromOutside(v, v.legs[0]);
+      if (j < 0) {                                  // starts the day stabled away from a depot
+        const o = fromStation(v, stationOf(v.trips[0].p.stops[0]));
+        if (o) { v.set = o.set; v.stable0 = o; continue; }
+        v.set = fromLoose(v);
         if (!v.set) { const got = fromDepot(v, homeDepot(FLEET.find(f => f.lines.includes(v.route)))); if (got) v.set = got.e.set; }
         continue;
       }
@@ -388,7 +378,10 @@
           continue;
         }
         if (v.set) continue;                        // laid over without a place (yard full)
-        const got = fromDepot(v, s.depot) || (() => { const set = fromOutside(v, null); return set && { e: { set } }; })();
+        // A train that spent the night at the depot station (depot full) goes first.
+        const o = s.t0 === DAY_START && fromStation(v, stationOf(v.trips[0].p.stops[0]));
+        if (o) { v.set = o.set; v.stable0 = o; v.noDepotStart = true; continue; }
+        const got = fromDepot(v, s.depot) || (() => { const set = fromLoose(v); return set && { e: { set } }; })();
         if (!got) continue;
         v.set = got.e.set;
         if (got.t) v.parks[j] = { slot: got.t.i, k: got.e.k };
@@ -398,21 +391,46 @@
       if (!v.set) continue;
       const leaves = s.t1 < DAY_END ? s.t1 : Infinity;
       const at = park(s.depot, v, leaves);
-      if (!at) continue;
+      if (!at) { if (leaves === Infinity) v.noDepotEnd = true; continue; }   // depot full: stays out at the station
       const e = { set: v.set, k: at.k, t1: leaves, from: leaves === Infinity ? v : null, arrived: t, own: leaves !== Infinity };
       at.t.occ.push(e);
       v.parks[j] = { slot: at.t.i, k: at.k };
       if (e.own) v.own = { t: at.t, e };
     }
-    for (const v of runs) {
-      const last = v.legs.at(-1);
-      if (v.set && last.kind === "hold" && last.parked) endOutside.push({ set: v.set, ll: legLL(last), spot: last.spot, k: v.stableIn });
+    // Trains not taken today stay where they stood.
+    const used = new Map();                                 // tail end node or "p"+platform node -> trains there
+    const stayed = [...waiting.values()].flat();
+    for (const o of stayed) {
+      const key = o.plat != null ? "p" + D.patterns[o.plat].P.n.at(-1) : o.spot;
+      used.set(key, Math.max(used.get(key) || 0, o.k + 1));
+    }
+    // Trains ending the day away from a depot, in order of arrival: into the tail tracks
+    // as far as each holds, then at the platform behind them.
+    const arrival = v => v.trips.at(-1).start + v.trips.at(-1).p.arr.at(-1);
+    const evening = runs.filter(v => v.set && (v.noDepotEnd || (v.legs.at(-1).kind === "hold" && v.legs.at(-1).parked)));
+    for (const v of evening.sort((a, b) => arrival(a) - arrival(b))) {
+      const A = v.trips.at(-1).p, dp = lineDepot(v.route), len = TRAIN_TYPES[v.set.type].length;
+      let place = null;
+      for (const i of D.stable.in[A.s1] || []) {
+        const spot = paths[i].n.at(-1), k = used.get(spot) || 0;
+        if (dp.end + k * dp.pitch + len <= (D.stable.room[spot] || 0)) { place = { tail: i, spot, k }; used.set(spot, k + 1); break; }
+      }
+      if (!place) {
+        const key = "p" + A.P.n.at(-1), k = used.get(key) || 0;
+        used.set(key, k + 1);
+        place = { plat: patternIdx.get(A), k };
+      }
+      v.stable1 = place;
+      endOutside.push({ set: v.set, station: stationOf(A.stops.at(-1)), stop: A.stops.at(-1), ...place });
     }
     // Runs left without a set (more runs than trains): any set allowed on the line.
     for (const v of runs) if (!v.set) v.set = FLEET.find(f => f.lines.includes(v.route));
 
-    // Trains in the yard all day: spares.
+    // Trains in the yard, or stabled away from it, all day: spares.
     const list = [...runs];
+    for (const o of stayed) {
+      list.push({ key: `${date}/spare/${o.set.id}`, route: o.set.lines[0], run: null, spare: true, set: o.set, trips: [], stays: [], parks: [], outside: o });
+    }
     for (const [key, tracks] of Object.entries(yard)) {
       for (const t of tracks) for (const e of t.occ) {
         if (e.t1 !== Infinity || e.from) continue;
@@ -422,11 +440,17 @@
     }
     // Next morning's yard: gaps left by trains dug out closed up, in order; trains that
     // stood outside all day unused are taken back in overnight (at the front of a track).
-    const end = { yard: {}, outside: endOutside };
+    const end = { yard: {}, outside: [...endOutside, ...stayed] };
     for (const [key, tracks] of Object.entries(yard)) end.yard[key] = tracks.map(t => t.occ.sort((a, b) => a.k - b.k).map(e => e.set));
-    for (const { set } of outside) {
+    // Sets with no place yet go into their depot, or when it is full wait at its station's platform.
+    for (const { set } of loose) {
       const key = homeDepot(set), t = YARDS[key].find(t => end.yard[key][t.i].length < t.cap && (t.group === "main" || set.lines.includes(t.group)));
-      if (t) end.yard[key][t.i].push(set);
+      if (t) { end.yard[key][t.i].push(set); continue; }
+      const A = D.patterns.find(p => set.lines.includes(p.route) && depotFor(p.route, p.stops.at(-1)) === key);
+      if (!A) continue;
+      const pk = "p" + A.P.n.at(-1), k = used.get(pk) || 0;
+      used.set(pk, k + 1);
+      end.outside.push({ set, station: stationOf(A.stops.at(-1)), stop: A.stops.at(-1), plat: patternIdx.get(A), k });
     }
     return { list, end };
   }
@@ -518,9 +542,11 @@
     /** Train centre's distance from the end of a stabling siding or tail track for the
      *  k-th train standing there (k = 0 at the buffer stop), like places in a depot. */
     const stableAt = (k = 0) => {
-      const dp = D.depots[Object.keys(D.depots).find(key => D.depots[key].stations[v.route])];
+      const dp = lineDepot(v.route);
       return dp.end + k * dp.pitch + (v.set ? TRAIN_TYPES[v.set.type].length : dp.pitch) / 2;
     };
+    /** Train centre on path P for the k-th train stopped behind its end (a platform). */
+    const behind = (P, k = 0) => Math.max(0, P.len - k * lineDepot(v.route).pitch);
     const firstStop = trip => trip.p.stops[0];
     const lastStop = trip => trip.p.stops.at(-1);
 
@@ -528,7 +554,8 @@
     {
       const first = T[0], p = first.p, dep = first.start + p.dep[0];
       const nextInfo = { nextTrip: first };
-      const depot = depotFor(v.route, firstStop(first));
+      let depot = depotFor(v.route, firstStop(first));
+      if (depot && v.noDepotStart) { v.stays.push({ depot: null, t0: 0, t1: 0 }); depot = null; }   // keeps stay numbering
       const outs = depot && D.depots[depot].out[p.s0];
       const pk = depot && park(depot);
       if (outs && outs[pk.slot] != null) {
@@ -536,11 +563,24 @@
         const dt = moveTime(P, DEPOT_SPEED);
         parkedLeg(v.startAt ?? DAY_START, dep - READY - dt, depot, pk.slot, P, pk.c, nextInfo);
         addMove(P, dep - READY - dt, dep - READY, "leavingDepot", nextInfo, pk.c);
+      } else if (v.stable0 && v.stable0.plat != null) {
+        // Spent the night at the platform it arrived at: over to the departure platform if that differs.
+        const sb = v.stable0, A = D.patterns[sb.plat], Pt = paths[D.turns[`${sb.plat}>${patternIdx.get(p)}`]];
+        if (A.P !== p.P && Pt && Pt.len >= 5) {
+          const dt = moveTime(Pt, SHUNT_SPEED);
+          push(DAY_START, dep - READY - dt, { kind: "hold", P: A.P, d: behind(A.P, sb.k), parked: true, status: "stabled", stop: A.stops.at(-1), ...nextInfo });
+          addMove(Pt, dep - READY - dt, dep - READY, "toPlatform", nextInfo);
+        } else {
+          push(DAY_START, dep - READY, { kind: "hold", P: p.P, d: 0, parked: true, status: "stabled", stop: firstStop(first), ...nextInfo });
+        }
       } else {
-        const P = paths[D.stable.out[p.s0] ?? p.path];
+        // On a tail track or siding: the one it spent the night on, at its place there.
+        const opts = D.stable.out[p.s0] || [], sb = v.stable0;
+        const i = (sb && opts.find(i => paths[i].n[0] === sb.spot)) ?? opts[0];
+        const P = i != null ? paths[i] : p.P;
         const dt = P === p.P ? 0 : moveTime(P, SHUNT_SPEED);
-        const d = P === p.P ? 0 : Math.min(P.len, stableAt(v.stableOut));
-        push(DAY_START, dep - READY - dt, { kind: "hold", P, d, parked: true, status: "stabled", stop: firstStop(first), spot: P.n[0], ...nextInfo });
+        const d = P === p.P ? 0 : Math.min(P.len, stableAt(sb ? sb.k : 0));
+        push(DAY_START, dep - READY - dt, { kind: "hold", P, d, parked: true, status: "stabled", stop: firstStop(first), ...nextInfo });
         if (dt) addMove(P, dep - READY - dt, dep - READY, "toPlatform", nextInfo, d);
       }
       push(Math.max(DAY_START, dep - READY), dep, { kind: "hold", P: p.P, d: 0, status: "readyFirst", stop: firstStop(first), ...nextInfo });
@@ -557,19 +597,20 @@
       if (!B) {
         // After the last trip: depot or stabling siding until the end of the service day.
         push(ta, ta + UNLOAD, { ...arrived, status: "terminating" });
-        const ins = depot && D.depots[depot].in[pA.s1];
-        const pk = depot && park(depot);
+        const ins = depot && !v.noDepotEnd && D.depots[depot].in[pA.s1];
+        const pk = ins && park(depot);
         if (ins && ins[pk.slot] != null) {
           const P = paths[ins[pk.slot]], dt = moveTime(P, DEPOT_SPEED);
           addMove(P, ta + UNLOAD, ta + UNLOAD + dt, "toDepot", {}, 0, P.len - pk.c);
           parkedLeg(ta + UNLOAD + dt, v.endAt ?? DAY_END, depot, pk.slot, P, P.len - pk.c, {});
         } else {
-          const P = paths[D.stable.in[pA.s1] ?? pA.path];
-          if (P === pA.P) push(ta + UNLOAD, DAY_END, { ...arrived, parked: true, status: "stabled" });
+          // Away from a depot: into a tail track or siding, or stays at the platform.
+          const sb = v.stable1, i = sb ? sb.tail : (D.stable.in[pA.s1] || [])[0];
+          if (i == null) push(ta + UNLOAD, DAY_END, { ...arrived, d: behind(pA.P, sb ? sb.k : 0), parked: true, status: "stabled" });
           else {
-            const dt = moveTime(P, SHUNT_SPEED), d = Math.max(0, P.len - stableAt(v.stableIn));
+            const P = paths[i], dt = moveTime(P, SHUNT_SPEED), d = Math.max(0, P.len - stableAt(sb ? sb.k : 0));
             addMove(P, ta + UNLOAD, ta + UNLOAD + dt, "toSiding", {}, 0, d);
-            push(ta + UNLOAD + dt, DAY_END, { kind: "hold", P, d, parked: true, status: "stabled", stop: endStop, spot: P.n.at(-1) });
+            push(ta + UNLOAD + dt, DAY_END, { kind: "hold", P, d, parked: true, status: "stabled", stop: endStop });
           }
         }
         break;
@@ -607,8 +648,15 @@
     return legs;
   }
 
-  /** A spare set: parked at its place in the yard all day, facing the exit. */
+  /** A spare set: parked at its place in the yard all day, facing the exit, or where it
+   *  spent the night away from a depot. */
   function spareLegs(v) {
+    if (v.outside) {
+      const o = v.outside, dp = lineDepot(v.route), len = TRAIN_TYPES[v.set.type].length;
+      const P = o.plat != null ? D.patterns[o.plat].P : paths[o.tail];
+      const d = Math.max(0, o.plat != null ? P.len - o.k * dp.pitch : P.len - (dp.end + o.k * dp.pitch + len / 2));
+      return [{ t0: DAY_START, t1: DAY_END, kind: "hold", P, d, parked: true, status: "stabled", stop: o.stop }];
+    }
     const { depot, t0, t1 } = v.stays[0], dp = D.depots[depot], a = v.parks[0] || { slot: 0, k: 0 };
     const P = paths[Object.values(dp.out)[0][a.slot]];
     const d = dp.end + a.k * dp.pitch + TRAIN_TYPES[v.set.type].length / 2;

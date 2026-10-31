@@ -213,23 +213,46 @@ class Network:
         return {v for v, nb in enumerate(g.adj)
                 if len(nb) == 1 and all(_turn_allow(s) and s != "spur" for s in nb.values())}
 
-    def to_stable(self, end, spots):
-        a, ha = end
-        r = self.g.route(a, None, h_start=ha, goal_any=spots, max_rev=2, rev_cost=60.0,
-                         allow=_turn_allow, max_len=STABLE_SEARCH)
-        return self.add_path(*r) if r else self.add_path([a], [])
+    def spot_room(self, v):
+        """Metres of plain track from dead end v back to the first switch."""
+        g = self.g
+        prev, length = None, 0.0
+        while True:
+            w = next(w for w in g.adj[v] if w != prev)
+            length += g.dist(v, w)
+            prev, v = v, w
+            if len(g.adj[v]) != 2:
+                return length
 
-    def from_stable(self, start, spots):
+    def _near_spots(self, node, spots):
+        x, y = self.g.xy[node]
+        return [s for s in spots if math.hypot(self.g.xy[s][0] - x, self.g.xy[s][1] - y) < STABLE_SEARCH]
+
+    def to_stables(self, end, spots):
+        """Paths from an arrival platform state to each siding / tail end nearby, shortest first."""
+        a, ha = end
+        found = []
+        for s in self._near_spots(a, spots):
+            r = self.g.route(a, None, h_start=ha, goal_any={s}, max_rev=2, rev_cost=60.0,
+                             allow=_turn_allow, max_len=STABLE_SEARCH)
+            if r:
+                found.append((self.g.path_len(r[0]) + 60.0 * len(r[1]), self.add_path(*r)))
+        return [i for _, i in sorted(found)]
+
+    def from_stables(self, start, spots):
+        """Paths from each siding / tail end nearby to a departure platform state, shortest first."""
         b, hb = start
-        # Search backwards: from the platform facing away from the departure direction.
-        r = self.g.route(b, None, h_start=(-hb[0], -hb[1]), goal_any=spots, max_rev=2, rev_cost=60.0,
-                         allow=_turn_allow, max_len=STABLE_SEARCH)
-        if not r:
-            return self.add_path([b], [])
-        nodes, revs = r
-        nodes = nodes[::-1]
-        revs = [len(nodes) - 1 - i for i in revs][::-1]
-        return self.add_path(nodes, revs)
+        found = []
+        for s in self._near_spots(b, spots):
+            # Search backwards: from the platform facing away from the departure direction.
+            r = self.g.route(b, None, h_start=(-hb[0], -hb[1]), goal_any={s}, max_rev=2, rev_cost=60.0,
+                             allow=_turn_allow, max_len=STABLE_SEARCH)
+            if r:
+                nodes, revs = r
+                nodes = nodes[::-1]
+                revs = [len(nodes) - 1 - i for i in revs][::-1]
+                found.append((self.g.path_len(nodes) + 60.0 * len(revs), self.add_path(nodes, revs)))
+        return [i for _, i in sorted(found)]
 
     # ---- export ----
     def track_lines(self, route_edges):
