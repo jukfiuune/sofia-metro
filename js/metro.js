@@ -1069,6 +1069,9 @@
         else hideBody(tm);
         if (tm.vehEl && withBody !== tm.hasBody) { tm.vehEl.classList.toggle("has-body", withBody); tm.hasBody = withBody; }
         if (tm.vehEl) tm.vehEl.classList.toggle("selected", !!(ST.card && ST.card.id === "train:" + v.key));
+        // Trains standing in a depot are just grey bodies; the marker appears when one moves off.
+        const inDepot = st.kind === "depot";
+        if (el && inDepot !== tm.inDepot) { el.style.display = inDepot ? "none" : ""; tm.inDepot = inDepot; }
       }
       for (const [key, tm] of trainMarkers) {
         if (!seen.has(key)) { hideBody(tm); map.removeLayer(tm.marker); trainMarkers.delete(key); }
