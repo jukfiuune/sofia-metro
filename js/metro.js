@@ -829,8 +829,13 @@
         const l = v.legs[i], m = v.legs[i - 1];
         if (l.kind !== "hold" || m.kind !== "move" || !["waiting", "readyFirst"].includes(l.status)) continue;
         const n = nodeOf(l);
-        // Others at that platform when this one would pull in, leaving before it does.
-        const busy = n == null ? [] : standing.at(n, m.t1).filter(([w, h]) => w !== v && h.t0 < m.t1 + 20 && h.t1 > m.t1 && h.t1 <= l.t1);
+        // Others standing at that platform while this one would, and leaving before it does:
+        // they are ahead of it there, so it pulls in only once they have gone.
+        const busy = [];
+        if (n != null) for (let t = m.t1; t < l.t1 + 3600; t += 3600) for (const x of standing.at(n, Math.min(t, l.t1))) {
+          const [w, h] = x;
+          if (w !== v && h.t0 < l.t1 && h.t1 > m.t1 && h.t1 <= l.t1 && !busy.includes(x)) busy.push(x);
+        }
         if (!busy.length) continue;
         const free = Math.max(...busy.map(([, h]) => h.t1)) + 15;
         delay(v, i - 1, i - 1, free - m.t1);
