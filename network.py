@@ -165,18 +165,34 @@ class Network:
         return self.add_path(nodes, []), dists, plats[0], plats[-1], crossover
 
     # ---- non-revenue moves ----
-    def turnback(self, end, start):
-        """Path from an arrival platform state to a departure platform state, one reversal."""
+    def turnback(self, end, start, spots=()):
+        """Paths from an arrival platform state to a departure platform state. Where the
+        train has to change ends, it runs right into a tail track (dead end) and back,
+        one option per tail nearby, shortest first, so following trains can alternate;
+        otherwise the shortest path with one reversal (or none, over a crossover)."""
         g = self.g
         (a, ha), (b, hb) = end, start
         r = g.route(a, b, h_start=ha, h_goal=hb, max_rev=1, rev_cost=40.0,
                     allow=_turn_allow, penalty=_turn_penalty)
+        if r is not None and not r[1]:
+            return [self.add_path(*r)]               # no change of ends needed
+        via = []
+        for spot in self._near_spots(a, spots):
+            there = g.route(a, None, h_start=ha, goal_any={spot}, max_rev=0, allow=_turn_allow,
+                            penalty=_turn_penalty, max_len=TAIL_SEARCH)
+            back = there and g.route(spot, b, h_goal=hb, max_rev=0, allow=_turn_allow,
+                                     penalty=_turn_penalty, max_len=TAIL_SEARCH)
+            if there and back:
+                nodes = there[0] + back[0][1:]
+                via.append((g.path_len(nodes), nodes, len(there[0]) - 1))
+        if via:
+            return [self.add_path(nodes, [k]) for _, nodes, k in sorted(via)[:2]]
         if r is None:
             r = g.route(a, b, h_start=ha, h_goal=hb, max_rev=3, rev_cost=40.0, allow=lambda s: True)
         if r is None:
             self.warnings.append(f"no turnback path {a} -> {b}")
-            return self.add_path([a, b], [])
-        return self.add_path(*r)
+            return [self.add_path([a, b], [])]
+        return [self.add_path(*r)]
 
     def depot_slots(self, depot):
         """Stabling tracks of a depot yard: [(dead-end node, metres of plain track before the first switch)]."""
