@@ -1,65 +1,131 @@
 <!doctype html>
-<html lang="en">
+<html lang="bg">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sofia Metro Live Map</title>
-  <meta name="description" content="Estimated positions of Sofia metro trains, computed from the official timetable.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e31e24'/%3E%3Ctext x='16' y='23' font-family='Arial,sans-serif' font-size='20' font-weight='700' fill='white' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sofia Transport Live</title>
+  <meta name="description" content="Live buses, trams and trolleybuses in Sofia from the official real-time feed, with metro trains estimated from the timetable.">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#16191e" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232d54a4'/%3E%3Crect x='7' y='8' width='18' height='15' rx='3' fill='white'/%3E%3Crect x='9.5' y='11' width='13' height='5' rx='1' fill='%232d54a4'/%3E%3Ccircle cx='11' cy='20' r='1.5' fill='%232d54a4'/%3E%3Ccircle cx='21' cy='20' r='1.5' fill='%232d54a4'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-  <link rel="preconnect" href="https://tile.openstreetmap.org">
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
+  <link rel="preconnect" href="https://gtfs.sofiatraffic.bg" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;500;600;700;800&family=Sofia+Sans+Condensed:wght@600;700;800&display=swap">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-  <link rel="stylesheet" href="style.css?v=14">
+  <link rel="stylesheet" href="style.css?v=23">
 </head>
 <body>
   <div id="map"></div>
 
-  <aside id="panel">
-    <header>
-      <h1>Sofia Metro</h1>
-      <button id="collapse" aria-label="Collapse panel" title="Collapse">▾</button>
-    </header>
-    <div id="panel-body">
-      <div id="clock">
-        <div id="clock-time">--:--:--</div>
-        <div id="clock-date"></div>
-        <div id="clock-mode"></div>
+  <!-- Left button rail -->
+  <nav id="rail" aria-label="Tools">
+    <button class="rail-btn" data-panel="menu" data-i18n-title="menu">
+      <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <button class="rail-btn" data-panel="search" data-i18n-title="search">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg></button>
+    <button class="rail-btn" data-panel="filter" data-i18n-title="filter">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16l-6 7.5V19l-4 1.5v-7z"/></svg><span class="rail-dot" id="filter-dot" hidden></span></button>
+    <button class="rail-btn" data-panel="layers" data-i18n-title="layers">
+      <svg viewBox="0 0 24 24"><path d="m12 4 9 5-9 5-9-5z"/><path d="m3 14 9 5 9-5"/></svg></button>
+    <button class="rail-btn" id="locate" data-i18n-title="locate">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="7"/></svg></button>
+  </nav>
+
+  <!-- Status chip: clock and live feed state -->
+  <div id="status">
+    <span id="status-clock">--:--:--</span>
+    <span id="status-feed" class="feed-dot"></span>
+    <span id="status-text"></span>
+  </div>
+
+  <!-- Tool panels (one at a time) -->
+  <section class="panel" id="panel-search" hidden>
+    <div class="panel-head">
+      <input type="search" id="search-input" autocomplete="off" spellcheck="false" data-i18n-placeholder="searchPlaceholder">
+      <button class="icon-btn panel-close" aria-label="Close">✕</button>
+    </div>
+    <div id="search-results" class="list"></div>
+  </section>
+
+  <section class="panel" id="panel-filter" hidden>
+    <div class="panel-head"><h2 data-i18n="filter"></h2><button class="icon-btn panel-close" aria-label="Close">✕</button></div>
+    <div class="panel-body">
+      <h3 data-i18n="vehicleTypes"></h3>
+      <div id="kind-filter" class="chips"></div>
+      <h3 data-i18n="lines"></h3>
+      <input type="search" id="line-filter-input" autocomplete="off" data-i18n-placeholder="lineFilterPlaceholder">
+      <div id="line-filter" class="chips lines"></div>
+      <button id="filter-reset" class="btn" data-i18n="resetFilter"></button>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-layers" hidden>
+    <div class="panel-head"><h2 data-i18n="mapStyle"></h2><button class="icon-btn panel-close" aria-label="Close">✕</button></div>
+    <div class="panel-body">
+      <div class="seg" id="style-choice">
+        <button data-style="vector" data-i18n="styleVector"></button>
+        <button data-style="osm" data-i18n="styleOsm"></button>
+      </div>
+      <p class="hint" id="style-hint"></p>
+      <h3 data-i18n="theme"></h3>
+      <div class="seg" id="theme-choice">
+        <button data-theme="auto" data-i18n="themeAuto"></button>
+        <button data-theme="light" data-i18n="themeLight"></button>
+        <button data-theme="dark" data-i18n="themeDark"></button>
+      </div>
+      <h3 data-i18n="display"></h3>
+      <label class="check"><input type="checkbox" id="show-bodies"> <span data-i18n="showBodies"></span></label>
+      <label class="check"><input type="checkbox" id="show-stops"> <span data-i18n="showStops"></span></label>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-menu" hidden>
+    <div class="panel-head"><h2 data-i18n="appTitle"></h2><button class="icon-btn panel-close" aria-label="Close">✕</button></div>
+    <div class="panel-body">
+      <h3 data-i18n="language"></h3>
+      <div class="seg" id="lang-choice"><button data-lang="bg">Български</button><button data-lang="en">English</button></div>
+
+      <h3 data-i18n="counts"></h3>
+      <div id="counts" class="counts"></div>
+
+      <h3 data-i18n="metroTime"></h3>
+      <p class="hint" data-i18n="metroTimeHint"></p>
+      <div class="row">
+        <input type="datetime-local" id="sim-time" step="60">
+        <button id="live-btn" class="btn primary" data-i18n="now"></button>
+      </div>
+      <div class="seg" id="speed">
+        <button data-speed="1">1×</button><button data-speed="10">10×</button><button data-speed="60">60×</button><button data-speed="300">300×</button>
+      </div>
+      <label for="delay" class="small-label" data-i18n="metroDelay"></label>
+      <div class="row">
+        <input type="number" id="delay" step="5" min="-600" max="600" inputmode="numeric">
+        <button id="delay-reset" class="btn" data-i18n="reset"></button>
       </div>
 
-      <div id="lines"><div id="lines-head"><span>Line (tap to hide)</span><span>In service</span></div></div>
-      <div id="fleet"></div>
-      <label class="check"><input type="checkbox" id="show-bodies"> Show full-length trains <span class="muted">(always on when zoomed in)</span></label>
-
-      <section id="time-controls">
-        <label for="sim-time">Show trains at</label>
-        <div class="row">
-          <input type="datetime-local" id="sim-time" step="60">
-          <button id="live" class="primary">Now</button>
-        </div>
-        <label for="speed">Speed</label>
-        <div class="row" id="speed" role="group">
-          <button data-speed="1" class="active">1×</button>
-          <button data-speed="10">10×</button>
-          <button data-speed="60">60×</button>
-          <button data-speed="300">300×</button>
-        </div>
-        <label for="delay">Trains run late by (seconds, negative = early)</label>
-        <div class="row">
-          <input type="number" id="delay" step="5" min="-600" max="600" inputmode="numeric">
-          <button id="delay-reset" title="Back to the default of 0 s">Reset</button>
-        </div>
-      </section>
-
-      <p class="note">
-        Positions are <strong>estimated</strong> from the official published timetable
-        (not live tracking). Real trains may run early or late.
-      </p>
-      <p class="note small" id="source"></p>
+      <h3 data-i18n="about"></h3>
+      <p class="hint" id="about"></p>
     </div>
+  </section>
+
+  <!-- Detail card (vehicle / stop / line) -->
+  <aside id="card" hidden>
+    <button class="icon-btn" id="card-close" aria-label="Close">✕</button>
+    <div id="card-body"></div>
   </aside>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script src="data/metro.js?v=14"></script>
-  <script src="app.js?v=14"></script>
+  <script src="data/metro.js?v=23"></script>
+  <script src="data/transit.js?v=23"></script>
+  <script src="data/shapes.js?v=23"></script>
+  <script src="js/fleet.js?v=23"></script>
+  <script src="js/basemap.js?v=23"></script>
+  <script src="js/core.js?v=23"></script>
+  <script src="js/metro.js?v=23"></script>
+  <script src="js/live.js?v=23"></script>
 </body>
 </html>

@@ -1,11 +1,29 @@
-# Sofia Metro map
+# Sofia Transport Live
 
-A zoomable map of all four Sofia metro lines (M1–M4) showing where each train should be right now, based on the official timetable. It does not use live tracking.
+A live map of Sofia's public transport, inspired by [livetransport.eu](https://livetransport.eu/sofia). Buses, trams and trolleybuses are shown at their real GPS positions. The metro, which has no live feed, is simulated from the official timetable on the real track layout. The interface is in Bulgarian, with an English switch.
 
 **Live site:** https://jukfiuune.github.io/sofia-metro/
 
-- **Timetable:** the official GTFS feed from the Sofia Urban Mobility Center (`https://gtfs.sofiatraffic.bg/api/v1/static`).
-- **Track layout:** OpenStreetMap (`railway=subway`), including platform tracks, crossovers, tail tracks, sidings and depot yards. It is cached in `data/osm_tracks.json`.
+## Data
+
+- **Live vehicles:** the official GTFS-realtime feeds of the Sofia Urban Mobility Center (`https://gtfs.sofiatraffic.bg/api/v1/vehicle-positions` and `trip-updates`). They allow cross-site requests, so the browser reads them directly and no server is needed.
+- **Lines, stops and route shapes:** the official GTFS static feed (`https://gtfs.sofiatraffic.bg/api/v1/static`).
+- **Metro track layout:** OpenStreetMap (`railway=subway`), cached in `data/osm_tracks.json`.
+- **Base map:** OpenFreeMap vector tiles (OpenMapTiles schema) in our own muted style, drawn by MapLibre. Browsers without WebGL, and low-memory phones by default, get OpenStreetMap raster tiles.
+- **Vehicle models:** fleet-number ranges, model names and features (low floor, AC) come from the [livetransport.eu](https://livetransport.eu/sofia) vehicle list. Lengths, body sections, build years and coupling come from transphoto.org, fotobus.msk.ru and Wikipedia (`data/fleet_research.json`). Section splits are estimates.
+
+## Live buses, trams and trolleybuses
+
+- **Updates:** each vehicle reports about every 5 s, and the app polls the feed at the same rate while the page is visible.
+- **Snapping:** a realtime `trip_id` is `<route>-<shape>-<run>-…`, so every vehicle's route shape is known. Each GPS fix is snapped to that shape, searching ahead of the previous fix first because shapes can pass the same street twice. Fixes more than 45 m off the shape are drawn as raw positions.
+- **Smooth motion:** vehicles are drawn 6 s behind real time and interpolated along the shape between two real fixes, so they follow the road and never cut corners. If a fix is late, a vehicle keeps its last speed for up to 6 s, but never past the next stop.
+- **Faded vehicles:** a vehicle with no fix for 90 s is faded, and after 5 minutes it is removed.
+- **Full-length view:** at zoom 16.5 and closer, or from zoom 14 with "Full-length vehicles" ticked, each vehicle is drawn at its model's real length with its articulated sections. Coupled tram pairs (T6B5, T6A5) are drawn as two cars.
+- **Cards:**
+  - **Vehicle:** next stop and ETA, speed, occupancy, model, length, low floor and AC, plus the stop list with predicted times.
+  - **Stop:** live departures from `trip-updates`.
+  - **Line:** directions and stops, with a button to show only that line.
+- **Search:** lines ("94", "трамвай 5"), stops (by name in either language, or by 4-digit stop code), metro stations, and vehicles by fleet number.
 
 ## How trains are simulated
 
@@ -19,8 +37,9 @@ A zoomable map of all four Sofia metro lines (M1–M4) showing where each train 
   - **Speed limits:** OSM `maxspeed` tags (20–80 km/h on M1, M2 and M4), curve radius (all lines; M3 has no speed tags), 40 km/h on crossovers, and the 80 km/h system maximum (Wikipedia, and the Siemens Inspiro spec sheet).
   - **Train performance:** about 1.0 m/s² acceleration and braking. Wikipedia gives 1.3 and 1.1 m/s² for the 81-740 "Rusich" trains; nothing was found for the Inspiro or Skoda trains.
   - **Dwell:** 25 s at a stop, shortened down to 8 s where the timetable is too tight.
-  - **In the popup:** clicking a train shows its estimated speed.
-  - **Timetable delay:** the GTFS stop times are marked approximate (`timepoint=0`), so real trains can run a little behind or ahead of them. By default trains follow the timetable exactly (0 s). The "Trains run late by" box in the panel changes this (negative values run trains early), and the browser remembers the value. Station popups still list the official timetable times.
+  - **In the card:** clicking a train shows its estimated speed.
+  - **Timetable delay:** the GTFS stop times are marked approximate (`timepoint=0`), so real trains can run a little behind or ahead of them. By default trains follow the timetable exactly (0 s). The "Metro runs late by" box in the menu changes this (negative values run trains early), and the browser remembers the value. Station cards still list the official timetable times.
+  - **Time travel:** the menu can show the metro at any time or speed. Live vehicles appear only in real time.
 - **Rolling stock:** which trainset works which run isn't published, so each run gets a set at random. The draw is seeded by date, so it's repeatable. A set can do several runs whose times don't overlap. The rules come from the real fleet (Wikipedia BG):
 
   | Type | Sets | Cars | Length | Lines |
@@ -31,9 +50,17 @@ A zoomable map of all four Sofia metro lines (M1–M4) showing where each train 
   | Škoda 21Mt/22Mt/23Mt | 8 | 4 | ~80 m | M1, M4 |
   | Siemens Inspiro | 30 | 3 | 60.0 m | M3 |
 
-  At zoom 16 and closer, or with "Show full-length trains" ticked, each train is drawn at its real length with every car (and articulated section) following the track.
+  When zoomed in, or with "Full-length vehicles" ticked, each train is drawn at its real length with every car (and articulated section) following the track.
 - **Non-revenue timing:** depot runs go about 40 km/h on running track and 15 km/h on yard tracks, and turnbacks about 29 km/h.
 - **Display:** when zoomed in (zoom 15 and up), the two directions are drawn apart, so both tracks and the crossovers between them are visible.
+
+## Performance
+
+- **Redraw rate:** the map redraws only as often as the fastest vehicle moves about half a pixel. That's 4 times a second zoomed out, and every frame only when zoomed right in.
+- **Slow devices:** the app measures how long a redraw takes on the device and waits at least three times that before the next one, so slow phones keep most of their time for scrolling and taps.
+- **Off-screen vehicles:** vehicles outside the view have no marker at all.
+- **Map library:** MapLibre (about 250 KB) is only downloaded when the vector map is in use.
+- **Measured cost:** on a desktop a full redraw of about 400 live vehicles plus the metro takes about 1 ms of JavaScript. Snapping all fixes takes about 8 ms every 5 s.
 
 ## Run
 
@@ -46,13 +73,18 @@ Then open http://localhost:8765. Any static host works; the live site is served 
 ## Update the data
 
 ```bash
-python3 build_data.py                 # latest GTFS + cached OSM tracks
+python3 build_transit.py              # lines, stops, shapes (latest GTFS)
+python3 build_data.py                 # metro (latest GTFS + cached OSM tracks)
 python3 build_data.py --refresh-osm   # also re-download OSM tracks (Overpass; can be slow)
+python3 tools/build_fleet.py          # js/fleet.js from data/fleet_models.json
 ```
 
 | File | Purpose |
 |---|---|
-| `build_data.py` | Reads the GTFS feed, builds vehicle runs, writes `data/metro.js` |
-| `tracks.py` | OSM download, track graph, switch-aware routing |
-| `network.py` | Places platforms and routes patterns, turnbacks, depot and stabling moves |
-| `app.js` | Map, train animation, panel |
+| `js/core.js` | Language, clock, map, panels, card, search, filters, frame loop |
+| `js/basemap.js` | Vector map style (OpenFreeMap) with raster fallback |
+| `js/live.js` | Realtime feed decoding, snapping, smooth motion, vehicle / stop / line cards |
+| `js/metro.js` | Metro simulation: runs, turnbacks, depots, train bodies |
+| `js/fleet.js` | Vehicle models by fleet number (generated) |
+| `build_transit.py` | Writes `data/transit.js` (lines, stops, stop patterns) and `data/shapes.js` (encoded route shapes) |
+| `build_data.py`, `tracks.py`, `network.py`, `runs.py` | Metro data: GTFS runs, OSM track graph, routing, speed profiles |
