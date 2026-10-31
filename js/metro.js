@@ -319,11 +319,15 @@
       }
       return null;
     }
-    function fromOutside(v, ll) {
+    /** A train stabled outside for run v: the one standing at v's place on its siding,
+     *  else another on that siding, else the nearest. */
+    function fromOutside(v, leg) {
       let best = null;
+      const ll = leg && legLL(leg);
       for (const o of outside) {
         if (!o.set.lines.includes(v.route)) continue;
-        const d = o.ll && ll ? llDist(o.ll, ll) : 1e7;
+        const d = o.spot != null && leg && o.spot === leg.spot ? Math.abs(o.k - v.stableOut) - 1e7
+          : o.ll && ll ? llDist(o.ll, ll) : 1e7;
         if (!best || d < best[0]) best = [d, o];
       }
       if (!best) return null;
@@ -344,6 +348,19 @@
       return best;
     }
 
+    // Trains stabled outside the depots stand one behind another on their siding: in the
+    // evening in order of arrival, in the morning the first to leave at the front.
+    const sidings = (pick, order, field) => {
+      const by = new Map();
+      for (const v of runs) {
+        const leg = pick(v);
+        if (leg.kind === "hold" && leg.spot != null) by.set(leg.spot, [...(by.get(leg.spot) || []), [v, leg]]);
+      }
+      for (const list of by.values()) list.sort(order).forEach(([v], k) => { v[field] = k; });
+    };
+    sidings(v => v.legs[0], (a, b) => b[1].t1 - a[1].t1, "stableOut");
+    sidings(v => v.legs.at(-1), (a, b) => a[1].t0 - b[1].t0, "stableIn");
+
     // Moves in and out of the yards, in time order (departures first at the same moment).
     const events = [];
     for (const v of runs) {
@@ -360,7 +377,7 @@
     for (const [t, arrive, v, j] of events) {
       const s = v.stays[j];
       if (j < 0) {                                  // starts the day stabled outside a depot
-        v.set = fromOutside(v, legLL(v.legs[0]));
+        v.set = fromOutside(v, v.legs[0]);
         if (!v.set) { const got = fromDepot(v, homeDepot(FLEET.find(f => f.lines.includes(v.route)))); if (got) v.set = got.e.set; }
         continue;
       }
@@ -389,7 +406,7 @@
     }
     for (const v of runs) {
       const last = v.legs.at(-1);
-      if (v.set && last.kind === "hold" && last.parked) endOutside.push({ set: v.set, ll: legLL(last) });
+      if (v.set && last.kind === "hold" && last.parked) endOutside.push({ set: v.set, ll: legLL(last), spot: last.spot, k: v.stableIn });
     }
     // Runs left without a set (more runs than trains): any set allowed on the line.
     for (const v of runs) if (!v.set) v.set = FLEET.find(f => f.lines.includes(v.route));
@@ -498,6 +515,12 @@
       v.stays.push({ depot, t0, t1 });
       push(t0, t1, { kind: "depot", depot, node: D.depots[depot].slots[slot], P, d, ...extra });
     };
+    /** Train centre's distance from the end of a stabling siding or tail track for the
+     *  k-th train standing there (k = 0 at the buffer stop), like places in a depot. */
+    const stableAt = (k = 0) => {
+      const dp = D.depots[Object.keys(D.depots).find(key => D.depots[key].stations[v.route])];
+      return dp.end + k * dp.pitch + (v.set ? TRAIN_TYPES[v.set.type].length : dp.pitch) / 2;
+    };
     const firstStop = trip => trip.p.stops[0];
     const lastStop = trip => trip.p.stops.at(-1);
 
@@ -516,8 +539,9 @@
       } else {
         const P = paths[D.stable.out[p.s0] ?? p.path];
         const dt = P === p.P ? 0 : moveTime(P, SHUNT_SPEED);
-        push(DAY_START, dep - READY - dt, { kind: "hold", P, d: 0, parked: true, status: "stabled", stop: firstStop(first), ...nextInfo });
-        if (dt) addMove(P, dep - READY - dt, dep - READY, "toPlatform", nextInfo);
+        const d = P === p.P ? 0 : Math.min(P.len, stableAt(v.stableOut));
+        push(DAY_START, dep - READY - dt, { kind: "hold", P, d, parked: true, status: "stabled", stop: firstStop(first), spot: P.n[0], ...nextInfo });
+        if (dt) addMove(P, dep - READY - dt, dep - READY, "toPlatform", nextInfo, d);
       }
       push(Math.max(DAY_START, dep - READY), dep, { kind: "hold", P: p.P, d: 0, status: "readyFirst", stop: firstStop(first), ...nextInfo });
     }
@@ -543,9 +567,9 @@
           const P = paths[D.stable.in[pA.s1] ?? pA.path];
           if (P === pA.P) push(ta + UNLOAD, DAY_END, { ...arrived, parked: true, status: "stabled" });
           else {
-            const dt = moveTime(P, SHUNT_SPEED);
-            addMove(P, ta + UNLOAD, ta + UNLOAD + dt, "toSiding", {});
-            push(ta + UNLOAD + dt, DAY_END, { kind: "hold", P, d: P.len, parked: true, status: "stabled", stop: endStop });
+            const dt = moveTime(P, SHUNT_SPEED), d = Math.max(0, P.len - stableAt(v.stableIn));
+            addMove(P, ta + UNLOAD, ta + UNLOAD + dt, "toSiding", {}, 0, d);
+            push(ta + UNLOAD + dt, DAY_END, { kind: "hold", P, d, parked: true, status: "stabled", stop: endStop, spot: P.n.at(-1) });
           }
         }
         break;
@@ -773,7 +797,7 @@
   for (const [key, dp] of Object.entries(D.depots)) {
     const m = L.marker([dp.lat, dp.lon], {
       pane: "stations", keyboard: false,
-      icon: L.divIcon({ className: "depot-icon", iconSize: [30, 30], iconAnchor: [15, 15], html: `<div class="depot">M<span class="depot-count">0</span></div>` }),
+      icon: L.divIcon({ className: "depot-icon", iconSize: [30, 30], iconAnchor: [15, 15], html: `<div class="depot k-metro">${ST.kindIcon("metro", 18)}<span class="depot-count">0</span></div>` }),
     }).addTo(map);
     m.on("click", () => ST.openCard({ id: "depot:" + key, render: () => depotCard(key) }));
     depotMarkers[key] = m;
