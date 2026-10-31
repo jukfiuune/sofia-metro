@@ -245,7 +245,7 @@ summary { cursor: pointer; padding: 10px 2px; font-weight: 700; }
   display: flex; align-items: center; justify-content: center; font: 800 14px/1 var(--font);
 }
 .depot .kind-icon { --s: 20px !important; background: none; }
-.depot.k-tram { background: var(--tram); } .depot.k-trolley { background: var(--trolley); } .depot.k-bus { background: var(--bus); }
+.depot.k-metro { background: var(--metro); } .depot.k-tram { background: var(--tram); } .depot.k-trolley { background: var(--trolley); } .depot.k-bus { background: var(--bus); }
 .depot-count {
   position: absolute; top: -8px; right: -10px; min-width: 18px; padding: 2px 4px; border-radius: 9px;
   background: #1d1f23; color: #fff; font-size: 10px; text-align: center; border: 1.5px solid #fff;
