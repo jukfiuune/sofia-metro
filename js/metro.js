@@ -773,7 +773,7 @@
   for (const [key, dp] of Object.entries(D.depots)) {
     const m = L.marker([dp.lat, dp.lon], {
       pane: "stations", keyboard: false,
-      icon: L.divIcon({ className: "depot-icon", iconSize: [30, 30], iconAnchor: [15, 15], html: `<div class="depot">D<span class="depot-count">0</span></div>` }),
+      icon: L.divIcon({ className: "depot-icon", iconSize: [30, 30], iconAnchor: [15, 15], html: `<div class="depot">M<span class="depot-count">0</span></div>` }),
     }).addTo(map);
     m.on("click", () => ST.openCard({ id: "depot:" + key, render: () => depotCard(key) }));
     depotMarkers[key] = m;
@@ -1056,8 +1056,10 @@
         if (el) {
           if (!tm.dirEl) { tm.dirEl = el.querySelector(".dir"); tm.vehEl = el.querySelector(".veh"); }
           tm.dirEl.style.transform = `rotate(${tm.brg}deg)`;
+          // Line colour all day, except on the way to a depot or siding to rest (white) and resting there (grey).
           const cls = st.kind === "trip" ? (st.tp.atStop >= 0 ? "at-stop" : "") :
-            (st.kind === "depot" || st.leg.parked) ? "parked" : "nonservice";
+            (st.kind === "depot" || st.leg.parked) ? "parked" :
+            (st.leg.status === "toDepot" || st.leg.status === "toSiding") ? "nonservice" : "";
           if (cls !== tm.cls) {
             tm.vehEl.classList.remove("at-stop", "parked", "nonservice");
             if (cls) tm.vehEl.classList.add(cls);
