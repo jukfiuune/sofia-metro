@@ -138,7 +138,7 @@
   };
 
   // ---------- Map ----------
-  const map = L.map("map", { zoomControl: false, minZoom: 10, maxZoom: 19, zoomSnap: 0.5, wheelPxPerZoomLevel: 90 });
+  const map = L.map("map", { zoomControl: false, minZoom: 10, maxZoom: 19, zoomSnap: 0.25, wheelPxPerZoomLevel: 90 });
   L.control.zoom({ position: "bottomright" }).addTo(map);
   L.control.scale({ position: "bottomleft", imperial: false }).addTo(map);
   for (const [name, z] of [["lines", 405], ["routes", 408], ["tracks", 415], ["stops", 418], ["stations", 420],
@@ -413,9 +413,16 @@
   const layers = [];
   let lastDraw = 0, lastSlow = 0, dirty = true, drawCost = 2;
   const invalidate = () => { dirty = true; };
-  map.on("move zoom", invalidate);
+  // While a zoom (pinch, wheel, buttons) is in progress Leaflet scales the existing
+  // picture; redrawing then would place markers and bodies for the target zoom inside
+  // the scaled panes, and on phones would starve the pinch gesture. So pause until it ends.
+  let zooming = false;
+  map.on("zoomstart", () => { zooming = true; });
+  map.on("zoomend", () => { zooming = false; dirty = true; });
+  map.on("moveend", invalidate);
   function frame() {
     requestAnimationFrame(frame);
+    if (zooming) return;
     const now = performance.now();
     const interval = Math.max(Math.min(250, 500 * metresPerPixel() / (V_FASTEST * Math.max(1, clock.speed))), 3 * drawCost);
     if (now - lastDraw < (dirty ? 2 * drawCost : interval)) return;
