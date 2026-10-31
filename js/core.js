@@ -66,6 +66,10 @@
     duty: ["курс", "duty"], state: ["Състояние", "State"], depot: ["Депо", "Depot"], parkedN: ["{n} паркирани", "{n} parked"],
     depotNote: ["Местоположението е открито от записите; паркираните возила са по симулацията.", "Location found from recordings; parked vehicles are from the simulation."],
     simNote: ["Симулирано по типични времена за пътуване ({src}).", "Simulated from typical travel times ({src})."],
+    nextTrips: ["Следващи курсове", "Next trips"], gpsLost: ["Няма GPS сигнал от {m} мин — позицията е прогноза.", "No GPS for {m} min — the position is a forecast."],
+    untrackedNote: ["Няма GPS данни за този курс — показан е по разписание.", "No GPS for this duty — shown from the timetable."],
+    forecastNote: ["прогноза от симулацията (няма официална прогноза)", "forecast from the simulation (no official prediction)"],
+    showUntracked: ["Курсове без GPS (по разписание)", "Duties without GPS (from the timetable)"],
     st_moving: ["В движение", "In service"], st_stop: ["На спирка", "At a stop"], st_ready: ["Готов за тръгване", "Ready to depart"],
     st_layover: ["Изчаква на крайна спирка", "Layover at the terminus"], st_terminating: ["Краен курс", "Terminating"],
     st_depot: ["В депото", "In the depot"], st_toDepot: ["Прибира се в депото", "Going to the depot"], st_deadhead: ["Празен курс", "Running empty"],
@@ -337,7 +341,7 @@
   document.getElementById("filter-reset").addEventListener("click", () => setFilter({ kinds: KINDS, lines: [] }));
 
   // ---------- Display settings ----------
-  const display = { bodies: store.get("bodies", false), stops: store.get("stops", true) };
+  const display = { bodies: store.get("bodies", false), stops: store.get("stops", true), untracked: store.get("untracked", false) };
   const BODY_ZOOM = 16.5;
   // Bodies are sub-pixel when zoomed out, so the setting only applies from zoom 14.
   const bodiesWanted = () => (display.bodies && map.getZoom() >= 14) || map.getZoom() >= BODY_ZOOM;
@@ -345,6 +349,9 @@
   bodyBox.checked = display.bodies; stopsBox.checked = display.stops;
   bodyBox.addEventListener("change", () => { display.bodies = bodyBox.checked; store.set("bodies", display.bodies); invalidate(); });
   stopsBox.addEventListener("change", () => { display.stops = stopsBox.checked; store.set("stops", display.stops); emit("stops"); });
+  const untrackedBox = document.getElementById("show-untracked");
+  untrackedBox.checked = display.untracked;
+  untrackedBox.addEventListener("change", () => { display.untracked = untrackedBox.checked; store.set("untracked", display.untracked); invalidate(); });
   document.getElementById("theme-choice").addEventListener("click", e => {
     const b = e.target.closest("[data-theme]"); if (!b) return;
     themeSetting = b.dataset.theme; store.set("theme", themeSetting); applyTheme();

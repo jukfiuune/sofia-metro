@@ -48,12 +48,16 @@
   };
 
   // ---------- Duties for one service day ----------
+  /** Profile column: 0 weekday, 1 saturday, 2 sunday. */
+  function dayType(date) {
+    const wd = new Date(Date.UTC(+date.slice(0, 4), +date.slice(4, 6) - 1, +date.slice(6, 8))).getUTCDay();
+    return wd === 0 ? 2 : wd === 6 ? 1 : 0;
+  }
   const cache = new Map();
   function dutiesFor(date) {
     if (cache.has(date)) return cache.get(date);
     const k = dayIndex(date);
-    const wd = new Date(Date.UTC(+date.slice(0, 4), +date.slice(4, 6) - 1, +date.slice(6, 8))).getUTCDay();
-    const dtype = wd === 0 ? 2 : wd === 6 ? 1 : 0;      // profile strings: weekday, saturday, sunday
+    const dtype = dayType(date);
     const byDuty = new Map();
     if (k >= 0) for (const [pi, start, cal, duty] of S.trips) {
       if (S.calendars[cal][k] !== "1") continue;
@@ -66,14 +70,25 @@
       const v = plan(duty, trips, dtype);
       if (v) list.push(v);
     }
-    const out = { date, list, byStop: null, dtype };
+    const out = { date, list, byStop: null, dtype, byName: new Map(list.map(v => [v.name, v])) };
     if (cache.size > 3) cache.delete(cache.keys().next().value);
     cache.set(date, out);
     return out;
   }
 
-  /** Legs: {t0, t1, type: "shape"|"line"|"hold", ...}. Also predicted stop times per trip. */
-  function plan(duty, trips, dtype) {
+  /** Run time (s) of segment i-1 -> i of pattern p, starting at service-day second t. */
+  function segmentTime(p, i, t, dtype) {
+    const prof = p.g[i - 1] >= 0 ? S.profiles[p.g[i - 1]] : null;
+    const f = prof ? factorAt(prof[1 + dtype], Math.floor((t % 86400) / 3600)) : null;
+    return Math.max(10, prof && f ? prof[0] * f : Math.max(20, (p.t[i] - p.t[i - 1]) - DEFAULT_DWELL));
+  }
+
+  /**
+   * Legs: {t0, t1, type: "shape"|"line"|"hold", ...}, and predicted stop times per trip.
+   * With `from` = {k, s, t} the plan starts mid-day from a real position: trip k,
+   * s metres along its shape, at service-day second t (a live vehicle's forecast).
+   */
+  function plan(duty, trips, dtype, from) {
     const first = trips[0].p;
     if (!first.route || !X.ROUTES[first.route]) return null;
     const route = first.route, kind = X.kindOf(route), kindBase = X.ROUTES[route].kind;
@@ -88,7 +103,8 @@
       legs.push({ type: "line", t0, t1: t0 + dur, a, b });
       return t0 + dur;
     };
-    if (depot) {
+    if (from) t = from.t;
+    else if (depot) {
       const out = Math.hypot(depot.xy[0] - startXY[0], depot.xy[1] - startXY[1]) * 1.35 / DEADHEAD + 60;
       t = trips[0].start - READY - out;
       legs.push({ type: "hold", t0: DAY_START, t1: t, at: depot.xy, depot: depot.i, status: "depot" });
@@ -97,17 +113,26 @@
 
     trips.forEach((tr, k) => {
       const p = tr.p, n = p.stops.length;
-      const begin = Math.max(t, tr.start);
-      legs.push({ type: "hold", t0: t, t1: begin, at: stopXY(p.stops[0]), status: k === 0 ? "ready" : "layover", run: runs.length, i: 0 });
-      t = begin;
-      const times = [t];                                 // predicted departure from stop 0, arrival at others
-      for (let i = 1; i < n; i++) {
-        const hour = Math.floor((t % 86400) / 3600);
-        const prof = p.g[i - 1] >= 0 ? S.profiles[p.g[i - 1]] : null;
-        const f = prof ? factorAt(prof[1 + dtype], hour) : null;
-        let run = prof && f ? prof[0] * f : Math.max(20, (p.t[i] - p.t[i - 1]) - DEFAULT_DWELL);
-        run = Math.max(10, run);
-        legs.push({ type: "shape", t0: t, t1: t + run, shape: p.shape, s0: p.d[i - 1], s1: p.d[i], run: runs.length, i });
+      if (from && k < from.k) { runs.push({ p, start: tr.start, times: null }); return; }
+      const times = new Array(n).fill(null);           // predicted departure from stop 0, arrival at others
+      let i0 = 1, s0 = null;
+      if (from && k === from.k) {
+        // Mid-trip: continue from the live position to the next stop.
+        i0 = Math.max(1, p.d.findIndex(d => d > from.s + 1));
+        if (i0 < 1 || p.d[i0] == null) i0 = n - 1;
+        s0 = Math.min(from.s, p.d[i0]);
+      } else {
+        const begin = Math.max(t, tr.start);
+        legs.push({ type: "hold", t0: t, t1: begin, at: stopXY(p.stops[0]), status: k === 0 ? "ready" : "layover", run: runs.length, i: 0 });
+        t = begin;
+        times[0] = t;
+      }
+      for (let i = i0; i < n; i++) {
+        const full = segmentTime(p, i, t, dtype);
+        const a = i === i0 && s0 != null ? s0 : p.d[i - 1];
+        const frac = p.d[i] > p.d[i - 1] ? (p.d[i] - a) / (p.d[i] - p.d[i - 1]) : 1;
+        const run = Math.max(1, full * Math.max(0, Math.min(1, frac)));
+        legs.push({ type: "shape", t0: t, t1: t + run, shape: p.shape, s0: a, s1: p.d[i], run: runs.length, i });
         t += run;
         times.push(t);
         if (i < n - 1) {
@@ -138,7 +163,7 @@
         t = deadhead(t, endXY, nextXY);
       }
     });
-    return { id: "sim:" + duty, duty, route, kind, kindBase, legs, runs, li: 0, depot: depot ? depot.i : null };
+    return { id: "sim:" + duty, duty, name: S.duties[duty], route, kind, kindBase, legs, runs, li: 0, depot: depot ? depot.i : null };
   }
 
   // ---------- State at a time ----------
@@ -217,6 +242,39 @@
     return dutiesFor(date).list.filter(v => { const s = stateAt(v, sec); return s && s.leg.type === "hold" && s.leg.depot === depotIdx; });
   }
 
-  ST.sim = { ready: true, label: S.label, depots, vehiclesAt, departures, parkedAt, serviceDay };
+  /**
+   * Forecast for a live vehicle: its duty re-planned from where it is now (trip
+   * `tripId`, s metres along the shape, at epoch ms), with the same travel-time
+   * model as the simulation. Returns a vehicle-like object usable with stateAt(),
+   * or null if the duty or trip can't be found.
+   */
+  function forecast(tripId, s, ms) {
+    const duty = dutyOfTrip(tripId, ms);
+    if (!duty) return null;
+    const [, sec] = serviceDay(ms);
+    const shapeId = tripId.split("-")[1];
+    // The duty's trip on this shape whose timetable best fits the vehicle's position now.
+    let k = -1, best = Infinity;
+    duty.runs.forEach((r, i) => {
+      if (r.p.shape !== shapeId) return;
+      const j = Math.max(0, r.p.d.findIndex(d => d >= s));
+      const err = Math.abs(r.start + r.p.t[j] - sec);
+      if (err < best) { best = err; k = i; }
+    });
+    if (k < 0 || best > 3 * 3600) return null;
+    const trips = duty.runs.map(r => ({ p: r.p, start: r.start }));
+    const v = plan(duty.duty, trips, dayType(serviceDay(ms)[0]), { k, s, t: sec });
+    if (v) { v.id = "fc:" + tripId; v.runIdx = k; v.sec = sec; }
+    return v;
+  }
+
+  /** The simulated duty a live trip belongs to: GTFS block_id = route + run + service id. */
+  function dutyOfTrip(tripId, ms) {
+    const [route, , run, , svc] = tripId.split("-");
+    const day = dutiesFor(serviceDay(ms)[0]);
+    return day.byName.get(`${route}${run}${svc}`) || day.byName.get(`${route}-run${run}`) || null;
+  }
+
+  ST.sim = { ready: true, label: S.label, depots, vehiclesAt, departures, parkedAt, serviceDay, dutiesFor, dutyOfTrip, forecast, stateAt };
   ST.emit("sim");
 })();

@@ -14,8 +14,9 @@
   const TRIP_POLL = 20000;      // ms between trip-update fetches (only while a card needs them)
   const LAG = 6000;             // ms: vehicles are shown this far behind the latest fix
   const SNAP = 45;              // m: fixes further than this from the shape are drawn unsnapped
-  const STALE = 90;             // s without a new fix: drawn faded
-  const GONE = 300;             // s without a new fix: removed
+  const STALE = 90;             // s without a new fix: continues on its forecast (or fades)
+  const LOST = 300;             // s without a fix and no forecast: hidden
+  const GONE = 900;             // s without a new fix: removed (forecast continues until then)
 
   // ---------- Minimal protobuf reader (GTFS-realtime) ----------
   function readVarint(b, pos) {
@@ -310,6 +311,27 @@
     return s;
   }
 
+  /** Forecast for a live vehicle from its latest snapped fix (cached until the next fix). */
+  function forecastOf(v) {
+    if (!ST.sim || !v.tripId) return null;
+    const f = [...v.fixes].reverse().find(x => x.s !== null);
+    if (!f) return null;
+    if (v.fcKey !== f.t) { v.fcKey = f.t; v.fc = ST.sim.forecast(v.tripId, f.s, f.t); }
+    return v.fc;
+  }
+
+  /** Where a vehicle whose GPS has gone quiet should be now, from its forecast. */
+  function estimate(v, now) {
+    const fc = forecastOf(v);
+    if (!fc) return false;
+    const [, sec] = ST.sim.serviceDay(now);
+    const st = ST.sim.stateAt(fc, sec);
+    if (!st || ["depot", "toDepot", "deadhead", "terminating"].includes(st.status)) return false;
+    v.ll = st.ll; v.brg = st.brg; v.sDisp = st.sDisp; v.onShape = st.onShape && st.shapeId === v.shapeId;
+    if (st.shapeId && st.shapeId !== v.shapeId) v.onShape = false;
+    return true;
+  }
+
   function displayState(v, now) {
     const T = now - LAG;
     const sh = v.pattern ? shape(v.shapeId) : null;
@@ -439,7 +461,7 @@
 
   // ---------- Simulation (any time other than now) ----------
   let simLoading = false;
-  function loadSim() {
+  function loadSim(quiet) {
     if (simLoading) return;
     simLoading = true;
     const v = (document.querySelector('script[src*="js/live.js"]').src.match(/\?v=\d+/) || [""])[0];
@@ -448,10 +470,11 @@
       s.src = src; s.onload = res; s.onerror = rej;
       document.body.appendChild(s);
     });
-    ST.toast(t("simLoading"));
-    add("data/sim.js" + v).then(() => add("js/sim.js" + v)).then(() => ST.toast(null), () => { simLoading = false; ST.toast(t("simFailed")); });
+    if (!quiet) ST.toast(t("simLoading"));
+    add("data/sim.js" + v).then(() => add("js/sim.js" + v)).then(() => { if (!quiet) ST.toast(null); }, () => { simLoading = false; if (!quiet) ST.toast(t("simFailed")); });
   }
   ST.on("sim", () => { drawDepots(); ST.invalidate(); });
+  setTimeout(() => { if (!document.hidden) loadSim(true); }, 2500);
 
   // Depots (from the analysis), with the vehicles the simulation has parked there.
   const depotMarkers = [];
@@ -500,21 +523,37 @@
       else if (ST.sim) list = ST.sim.vehiclesAt(ctx.ms);
       else loadSim();
       const sim = !realtime;
-      if (sim && list) lastSim = new Map(list.map(v => [v.id, v]));
+      if (realtime && ST.sim && ST.display.untracked) {
+        // Scheduled duties with no live vehicle: shown hollow as "scheduled, no GPS".
+        const tracked = new Set();
+        for (const v of vehicles.values()) if (v.tripId) { const d = ST.sim.dutyOfTrip(v.tripId, ctx.ms); if (d) tracked.add(d.name); }
+        const extra = ST.sim.vehiclesAt(ctx.ms).filter(v => !tracked.has(v.name) && !OUT_OF_SERVICE.has(v.status) && v.status !== "terminating");
+        extra.forEach(v => { v.untracked = true; });
+        lastSim = new Map(extra.map(v => [v.id, v]));
+        list = [...vehicles.values(), ...extra];
+      }
+      if (sim && list) { lastSim = new Map(list.map(v => [v.id, v])); for (const v of lastSim.values()) v.untracked = false; }
       if (list) {
         for (const v of list) {
-          if (!sim && !v.fixes.length) continue;
-          const age = sim ? 0 : (feedTime - v.fixes.at(-1).t) / 1000;
-          const service = sim ? !OUT_OF_SERVICE.has(v.status) : age < STALE;
-          if (service) counts[v.kind] = (counts[v.kind] || 0) + 1;
+          const ghost = !!v.untracked && realtime;
+          if (!sim && !ghost && !v.fixes.length) continue;
+          const age = sim || ghost ? 0 : (feedTime - v.fixes.at(-1).t) / 1000;
+          const service = sim || ghost ? !OUT_OF_SERVICE.has(v.status) : age < STALE;
+          if (service && !ghost) counts[v.kind] = (counts[v.kind] || 0) + 1;
           if (!ST.routeVisible(v.routeId, v.kind) && v.id !== selectedId) continue;
           // Vehicles parked in a depot are only drawn when zoomed in on it.
           if (sim && v.status === "depot" && ctx.zoom < 16 && v.id !== selectedId) continue;
-          if (!sim) displayState(v, now);
+          let estimated = false;
+          if (!sim && !ghost) {
+            if (age >= STALE && (estimated = estimate(v, now))) { /* position from forecast */ }
+            else if (age >= LOST) continue;
+            else displayState(v, now);
+          }
           let m = markers.get(v.id);
           if (ctx.dots && v.id !== selectedId) {
             if (m) { hideBody(m); map.removeLayer(m.marker); markers.delete(v.id); }
-            if (ctx.view.contains(v.ll)) ctx.dot(v.ll, ROUTES[v.routeId] ? ROUTES[v.routeId].color : "#6c757d", () => openVehicle(v.id), age >= STALE ? 2.4 : undefined);
+            if (ctx.view.contains(v.ll)) ctx.dot(v.ll, ROUTES[v.routeId] ? ROUTES[v.routeId].color : "#6c757d", () => openVehicle(v.id),
+              ghost || (age >= STALE && !estimated) ? 2.4 : undefined);
             continue;
           }
           if (!ctx.view.contains(v.ll) && v.id !== selectedId) {
@@ -529,14 +568,15 @@
             m = { marker, routeId: v.routeId };
             markers.set(v.id, m);
           }
-          const withBody = ctx.bodies && v.onShape && age < STALE;
+          const withBody = ctx.bodies && v.onShape && (age < STALE || estimated) && !v.untracked;
           if (withBody) bodies.push({ v, m, front: v.sDisp + FRONT, len: bodyLength(v) });
           else { hideBody(m); m.marker.setLatLng(v.ll); }
           const el = m.marker.getElement();
           if (el) {
             if (!m.dirEl) { m.dirEl = el.querySelector(".dir"); m.vehEl = el.querySelector(".veh"); }
             m.dirEl.style.transform = `rotate(${v.brg || 0}deg)`;
-            const state = sim ? (v.status === "depot" ? "parked " : service ? "" : "nonservice ") : age >= STALE ? "stale " : "";
+            const state = v.untracked ? "untracked " : sim ? (v.status === "depot" ? "parked " : service ? "" : "nonservice ")
+              : estimated ? "estimated " : age >= STALE ? "stale " : "";
             const cls = `${state}${withBody ? "has-body " : ""}${v.id === selectedId ? "selected" : ""}`;
             if (cls !== m.cls) { m.vehEl.className = `veh k-${v.kind} ${cls}`; m.cls = cls; }
           }
@@ -608,7 +648,7 @@
       html += fact(t("delay"), Math.abs(delay) < 60 ? t("onTime") : delay > 0 ? t("late", { m: Math.round(delay / 60) }) : t("early", { m: Math.round(-delay / 60) }));
     }
     if (v.speed) html += fact(t("speed"), `${Math.round(v.speed)} ${t("kmh")}`);
-    html += `</div><p class="small muted">${t("simNote", { src: esc(ST.sim.label || "") })}</p>`;
+    html += `</div><p class="small muted">${v.untracked ? t("untrackedNote") + " " : ""}${t("simNote", { src: esc(ST.sim.label || "") })}</p>`;
     if (r) html += `<div class="card-actions"><button class="btn" data-action="live-line" data-line="${v.routeId}">${t("line")} ${esc(r.name)}</button></div>`;
     if (run) {
       html += `<h4>${t("stopsOnRoute")}</h4><ol class="stoplist">`;
@@ -630,7 +670,9 @@
     const r = ROUTES[v.routeId], p = v.pattern;
     const age = Math.max(0, Math.round((Date.now() - v.fixes.at(-1).t) / 1000));
     let html = `<div class="card-head">${r ? chip(v.routeId) : ""}<div><div class="card-title">${p ? `${t("toward")} ${esc(placeName(p.h))}` : esc(v.routeId)}</div>` +
-      `<div class="card-sub">${t("kind_" + v.kind)} · ${esc(v.id.replace(/^\D+/, ""))} · ${t("lastUpdate", { s: age })}</div></div></div><div class="facts">`;
+      `<div class="card-sub">${t("kind_" + v.kind)} · ${esc(v.id.replace(/^\D+/, ""))} · ${t("lastUpdate", { s: age })}</div></div></div>`;
+    if (age >= STALE) html += `<p class="small warn-note">${t("gpsLost", { m: Math.round(age / 60) })}</p>`;
+    html += `<div class="facts">`;
     const tu = tripUpdates && tripUpdates.byTrip.get(v.tripId);
     // Next stop from the snapped position along the pattern.
     let nextIdx = -1;
@@ -653,13 +695,31 @@
     });
     html += `<p class="small muted report">${t("wrongModel")} <a href="${issue}" target="_blank" rel="noopener">${t("reportIt")}</a></p>`;
     if (r) html += `<div class="card-actions"><button class="btn" data-action="live-line" data-line="${v.routeId}">${t("line")} ${esc(r.name)}</button></div>`;
+    // Forecast from the simulation: remaining stops where official predictions are
+    // missing (marked ≈), and the vehicle's next trips.
+    const fc = forecastOf(v);
+    const fcRun = fc && fc.runIdx != null ? fc.runs[fc.runIdx] : null;
+    const fcClock = s => Date.now() - (fc.sec - s) * 1000;
+    if (fc) {
+      const nextRuns = fc.runs.slice(fc.runIdx + 1).filter(r => r.times && r.times[0] != null).slice(0, 3);
+      if (nextRuns.length) {
+        html += `<h4>${t("nextTrips")}</h4><div class="rows">`;
+        for (const r of nextRuns) {
+          const late = r.times[0] - r.start;
+          html += `<div class="row-item">${ROUTES[r.p.route] ? chip(r.p.route) : ""}<span class="grow">${t("toward")} ${esc(placeName(r.p.head))}</span>` +
+            `<span class="t">≈ ${ST.hhmmEpoch(fcClock(r.times[0]))}${late >= 60 ? ` <span class="muted small">+${Math.round(late / 60)}</span>` : ""}</span></div>`;
+        }
+        html += `</div>`;
+      }
+    }
     if (p) {
       html += `<h4>${t("stopsOnRoute")}</h4><ol class="stoplist">`;
       p.s.forEach((si, i) => {
         const st = STOPS[si];
         const cls = nextIdx < 0 ? "" : i < nextIdx ? "past" : i === nextIdx ? "current" : "";
         const pred = tu && tu.stops.find(x => x.stopId === st.id);
-        const time = pred && pred.time && i >= nextIdx ? ST.hhmmEpoch(pred.time) : "";
+        const fcT = fcRun && fcRun.times[i] != null ? fcClock(fcRun.times[i]) : null;
+        const time = i < nextIdx ? "" : pred && pred.time ? ST.hhmmEpoch(pred.time) : fcT ? `≈ ${ST.hhmmEpoch(fcT)}` : "";
         html += `<li class="${cls}"><span class="dot"></span><a href="#" class="grow" data-action="live-stop" data-id="${st.id}">${esc(stopName(st))}</a><span class="t">${time}</span></li>`;
       });
       html += `</ol>`;
@@ -708,7 +768,19 @@
     const now = Date.now();
     const list = (tripUpdates.byStop.get(id) || []).filter(x => x.st.time > now - 30000 && x.st.time < now + 3600000)
       .sort((a, b) => a.st.time - b.st.time).slice(0, 25);
-    if (!list.length) return html + `<p class="muted">${t("noDepartures")}</p>`;
+    // Forecast rows for duties the official predictions don't cover (yet).
+    const fcRows = [];
+    if (ST.sim) {
+      const covered = new Set(list.map(({ rec }) => `${rec.routeId}|${rec.shapeId}|${Math.round(rec.stops.find(x => x.stopId === id).time / 600000)}`));
+      for (const x of ST.sim.departures(stopIndex.get(id), now)) {
+        const key = `${x.route}|${x.v.runs[0].p.shape}`;
+        void key;
+        const bucket = Math.round(x.time / 600000);
+        const dup = [...covered].some(c => c.startsWith(`${x.route}|`) && Math.abs(+c.split("|")[2] - bucket) <= 1);
+        if (!dup) fcRows.push(x);
+      }
+    }
+    if (!list.length && !fcRows.length) return html + `<p class="muted">${t("noDepartures")}</p>`;
     const byTrip = new Map([...vehicles.values()].map(v => [v.tripId, v]));
     html += `<div class="rows">`;
     for (const { rec, st } of list) {
@@ -720,6 +792,11 @@
         `<span class="grow">${p ? esc(placeName(p.h)) : ""}</span>` +
         `<span class="t">${minsText((st.time - now) / 1000)}${veh ? ' <span class="rt" title="' + t("realtime") + '"></span>' : ""}</span></div>`;
     }
+    for (const x of fcRows.slice(0, Math.max(0, 25 - list.length))) {
+      html += `<div class="row-item forecast">${ROUTES[x.route] ? chip(x.route) : ""}<span class="grow">${esc(placeName(x.head))}</span>` +
+        `<span class="t">≈ ${minsText((x.time - now) / 1000)}</span></div>`;
+    }
+    if (fcRows.length) html += `<p class="small muted">≈ ${t("forecastNote")}</p>`;
     return html + `</div>`;
   }
   function openStop(id) {

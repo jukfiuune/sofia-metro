@@ -79,6 +79,19 @@ At any time other than "Now", or at any speed-up, buses, trams and trolleybuses 
 - **Current data:** for now the profiles and depots come from the fake week, so the app labels them "fake week, test data". Real profiles replace them once the server has recorded enough.
 - **Speed:** about 750 simulated vehicles at the morning peak take about 0.4 ms per frame to compute.
 
+### Live plus forecast
+
+In real time the simulation also loads in the background, a couple of seconds after the live map. It's used for forecasts:
+
+- **Matching:** every live vehicle is matched to its duty. A GTFS `block_id` is route + run number + service id, all of which are in the realtime trip id, so all live vehicles match.
+- **Forecast:** a vehicle's day is re-planned from where it actually is, with the same travel-time model. The rest of its current trip gets predicted stop times, and its next trips start at their scheduled time or as soon as it can make it.
+- **Vehicle cards:** show the next trips with predicted departures. Stop times the official predictions don't cover are filled in from the forecast and marked ≈.
+- **Lost GPS:** a vehicle with no GPS fix for 90 s keeps moving along its forecast for up to 15 minutes, drawn with a dashed outline and labelled as a forecast.
+- **Stop cards:** add forecast departures (≈) for duties the official predictions don't cover yet.
+- **Duties without GPS (Map panel, off by default):** scheduled vehicles that aren't in the live feed, drawn hollow and dashed. On a Saturday afternoon about 12% of scheduled duties (53 of 445) had no live vehicle, spread across many lines: cancellations, missing GPS units or timing differences.
+
+Each forecast takes about 0.7 ms and is computed only when needed, then cached until that vehicle's next GPS fix.
+
 ## Analysis (planner branch)
 
 Scripts in `analysis/` turn recordings into the data the simulation and route planner will use. They read a recording directory without disturbing the recorder, and work the same on real and fake recordings.

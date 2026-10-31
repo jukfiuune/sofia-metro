@@ -179,6 +179,7 @@ def main():
         "calendars": calendars,
         "patterns": patterns,
         "trips": out_trips,           # [pattern, start (s after midnight), calendar, duty]
+        "duties": duties,             # duty index -> GTFS block_id (or "<route>-run<n>" when the feed has none)
         "profiles": profiles,         # [free s, weekday 24 chars, saturday, sunday]: chr(48 + (factor - 1) / 0.05), "!" = no data
         "dwell": dwell,               # stop index -> [weekday, saturday, sunday]: chr(48 + seconds / 2)
         "depots": depots,

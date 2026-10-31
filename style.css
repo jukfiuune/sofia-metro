@@ -219,6 +219,11 @@ summary { cursor: pointer; padding: 10px 2px; font-weight: 700; }
   filter: drop-shadow(0 0 1px #fff);
 }
 .veh.stale { opacity: 0.45; }
+.veh.estimated .dot { border-style: dashed; opacity: 0.85; }
+.veh.untracked .dot { background: var(--surface); color: var(--c); border: 2px dashed var(--c); box-shadow: none; opacity: 0.8; }
+.veh.untracked .dir::before { opacity: 0.5; }
+.row-item.forecast { opacity: 0.75; }
+.warn-note { margin: -6px 0 10px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--fg); }
 .veh.selected .dot { box-shadow: 0 0 0 3px var(--c), 0 0 0 6px rgba(255, 255, 255, 0.8), 0 1px 6px rgba(0, 0, 0, 0.5); }
 .veh.nonservice .dot { background: #fff; color: var(--c); border-color: var(--c); }
 .veh.parked .dot { background: #fff; color: #888; border-color: #888; box-shadow: none; }
