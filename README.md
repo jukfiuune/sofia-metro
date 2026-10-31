@@ -61,7 +61,8 @@ A live map of Sofia's public transport, inspired by [livetransport.eu](https://l
 
 - **Storage:** one SQLite file per service day (03:00–03:00) in `recordings/` (not in git). Positions are integers, and vehicle, trip and stop ids are stored in lookup tables. A standing vehicle is written once a minute instead of every poll. The static timetable is saved whenever it changes, so delays can later be computed against the right schedule.
 - **Reading while it runs:** the files are in WAL mode, so other scripts can read them while it writes. `python3 recorder/status.py [--hours]` shows polls, rows, vehicles, gaps and size per day. Its `open_day()` and `positions()` functions are meant for analysis scripts.
-- **Running full time:** `recorder/install.sh` installs a frozen copy of the script as a systemd user service (`sofia-recorder`), which restarts after crashes and on boot. Editing the project or switching branches doesn't affect the running copy; run `install.sh` again to update it. For it to run without a logged-in session: `sudo loginctl enable-linger $USER`.
+- **On the server:** `recorder/install-remote.sh user@host` copies the recorder to `~/sofia-recorder/` and runs it as a systemd user service there (data in `~/sofia-recorder/recordings/`). The server user needs lingering, set once by an admin. Check it with `ssh user@host python3 sofia-recorder/status.py --dir sofia-recorder/recordings`.
+- **Running locally:** `recorder/install.sh` installs a frozen copy of the script as a systemd user service (`sofia-recorder`), which restarts after crashes and on boot. Editing the project or switching branches doesn't affect the running copy; run `install.sh` again to update it. For it to run without a logged-in session: `sudo loginctl enable-linger $USER`.
 - **Logs:** `journalctl --user -u sofia-recorder`.
 
 ## Performance
