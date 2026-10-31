@@ -2,6 +2,8 @@
 
 A zoomable map of all four Sofia metro lines (M1–M4) showing where each train should be right now, based on the official timetable. It does not use live tracking.
 
+**Live site:** https://jukfiuune.github.io/sofia-metro/
+
 - **Timetable:** the official GTFS feed from the Sofia Urban Mobility Center (`https://gtfs.sofiatraffic.bg/api/v1/static`).
 - **Track layout:** OpenStreetMap (`railway=subway`), including platform tracks, crossovers, tail tracks, sidings and depot yards. It is cached in `data/osm_tracks.json`.
 
@@ -39,7 +41,7 @@ A zoomable map of all four Sofia metro lines (M1–M4) showing where each train 
 python3 -m http.server 8765
 ```
 
-Then open http://localhost:8765. Any static host works.
+Then open http://localhost:8765. Any static host works; the live site is served by GitHub Pages from the `main` branch.
 
 ## Update the data
 
