@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sofia Metro Live Map</title>
+  <meta name="description" content="Estimated positions of Sofia metro trains, computed from the official timetable.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e31e24'/%3E%3Ctext x='16' y='23' font-family='Arial,sans-serif' font-size='20' font-weight='700' fill='white' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+  <link rel="preconnect" href="https://tile.openstreetmap.org">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="style.css?v=13">
+</head>
+<body>
+  <div id="map"></div>
+
+  <aside id="panel">
+    <header>
+      <h1>Sofia Metro</h1>
+      <button id="collapse" aria-label="Collapse panel" title="Collapse">▾</button>
+    </header>
+    <div id="panel-body">
+      <div id="clock">
+        <div id="clock-time">--:--:--</div>
+        <div id="clock-date"></div>
+        <div id="clock-mode"></div>
+      </div>
+
+      <div id="lines"><div id="lines-head"><span>Line (tap to hide)</span><span>In service</span></div></div>
+      <div id="fleet"></div>
+      <label class="check"><input type="checkbox" id="show-bodies"> Show full-length trains <span class="muted">(always on when zoomed in)</span></label>
+
+      <section id="time-controls">
+        <label for="sim-time">Show trains at</label>
+        <div class="row">
+          <input type="datetime-local" id="sim-time" step="60">
+          <button id="live" class="primary">Now</button>
+        </div>
+        <label for="speed">Speed</label>
+        <div class="row" id="speed" role="group">
+          <button data-speed="1" class="active">1×</button>
+          <button data-speed="10">10×</button>
+          <button data-speed="60">60×</button>
+          <button data-speed="300">300×</button>
+        </div>
+        <label for="delay">Trains run late by (seconds, negative = early)</label>
+        <div class="row">
+          <input type="number" id="delay" step="5" min="-600" max="600" inputmode="numeric">
+          <button id="delay-reset" title="Back to the default of 60 s">Reset</button>
+        </div>
+      </section>
+
+      <p class="note">
+        Positions are <strong>estimated</strong> from the official published timetable
+        (not live tracking). Real trains may run early or late.
+      </p>
+      <p class="note small" id="source"></p>
+    </div>
+  </aside>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="data/metro.js?v=13"></script>
+  <script src="app.js?v=13"></script>
+</body>
+</html>
