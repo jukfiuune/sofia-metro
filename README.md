@@ -20,7 +20,7 @@ A zoomable map of all four Sofia metro lines (M1–M4) showing where each train 
   - **Train performance:** about 1.0 m/s² acceleration and braking. Wikipedia gives 1.3 and 1.1 m/s² for the 81-740 "Rusich" trains; nothing was found for the Inspiro or Skoda trains.
   - **Dwell:** 25 s at a stop, shortened down to 8 s where the timetable is too tight.
   - **In the popup:** clicking a train shows its estimated speed.
-  - **Timetable delay:** watching real trains showed them consistently arriving about 1 minute after the GTFS stop times, which the feed marks as approximate (`timepoint=0`). Train positions are therefore computed 60 s behind the clock by default. The "Trains run late by" box in the panel changes this (negative values run trains early), and the browser remembers the value. Station popups still list the official timetable times.
+  - **Timetable delay:** the GTFS stop times are marked approximate (`timepoint=0`), so real trains can run a little behind or ahead of them. By default trains follow the timetable exactly (0 s). The "Trains run late by" box in the panel changes this (negative values run trains early), and the browser remembers the value. Station popups still list the official timetable times.
 - **Rolling stock:** which trainset works which run isn't published, so each run gets a set at random. The draw is seeded by date, so it's repeatable. A set can do several runs whose times don't overlap. The rules come from the real fleet (Wikipedia BG):
 
   | Type | Sets | Cars | Length | Lines |

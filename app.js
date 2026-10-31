@@ -21,13 +21,13 @@
   const DEPOT_SPEED = 11;      // m/s (~40 km/h) for empty runs on the running line
   const YARD_SPEED = 4;        // m/s (~15 km/h) on depot yard tracks and spurs
   const DEPOT_GAP = 25 * 60;   // layovers longer than this at a depot station go to the depot
-  // Observed: real trains run about a minute behind the GTFS stop times (which the feed
-  // marks as approximate, timepoint=0), so positions are computed this far behind the clock.
+  // The GTFS stop times are marked approximate (timepoint=0) and real trains can run a little
+  // behind or ahead of them; this shifts positions behind the clock by that many seconds.
   // Adjustable in the panel; negative values run trains early.
-  const DEFAULT_DELAY = 60;    // s
+  const DEFAULT_DELAY = 0;     // s
   let timetableDelay = DEFAULT_DELAY;
   try {
-    const saved = localStorage.getItem("metro.delay");
+    const saved = localStorage.getItem("metro.delay2");
     if (saved !== null && Number.isFinite(+saved)) timetableDelay = +saved;
   } catch (e) { /* storage unavailable */ }
   const DAY_START = 3 * 3600;  // service day boundary (03:00) for depot / stabling state
@@ -946,7 +946,7 @@
   }
   function setDelay(v) {
     timetableDelay = Math.max(-600, Math.min(600, Math.round(v)));
-    try { localStorage.setItem("metro.delay", String(timetableDelay)); } catch (e) { /* storage unavailable */ }
+    try { localStorage.setItem("metro.delay2", String(timetableDelay)); } catch (e) { /* storage unavailable */ }
     syncDelay();
   }
   delayInput.addEventListener("input", () => { if (delayInput.value !== "" && Number.isFinite(+delayInput.value)) setDelay(+delayInput.value); });
