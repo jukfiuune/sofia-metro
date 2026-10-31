@@ -54,6 +54,7 @@
   const baseKind = id => ROUTES[id] ? ROUTES[id].kind : "bus";
   const STOPS = TD.stops.map(([id, code, name, en, lat, lon, routes]) => ({ id, code, name, en, lat, lon, routes }));
   const stopById = new Map(STOPS.map(s => [s.id, s]));
+  const stopIndex = new Map(STOPS.map((s, i) => [s.id, i]));
   const PATTERNS = TD.patterns;               // shapeId -> {r, h, s: stop indices, d: distances}
   const lineInfo = id => ({ id, name: ROUTES[id].name, kind: kindOf(id), color: ROUTES[id].color, text: ROUTES[id].text });
   const KIND_ORDER = { tram: 0, trolley: 1, bus: 2, night: 3 };
@@ -433,7 +434,58 @@
   }
 
   const counts = { tram: 0, trolley: 0, bus: 0, night: 0 };
-  let selectedId = null;
+  let selectedId = null, lastSim = null;
+  const OUT_OF_SERVICE = new Set(["depot", "toDepot", "deadhead"]);
+
+  // ---------- Simulation (any time other than now) ----------
+  let simLoading = false;
+  function loadSim() {
+    if (simLoading) return;
+    simLoading = true;
+    const v = (document.querySelector('script[src*="js/live.js"]').src.match(/\?v=\d+/) || [""])[0];
+    const add = src => new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = src; s.onload = res; s.onerror = rej;
+      document.body.appendChild(s);
+    });
+    ST.toast(t("simLoading"));
+    add("data/sim.js" + v).then(() => add("js/sim.js" + v)).then(() => ST.toast(null), () => { simLoading = false; ST.toast(t("simFailed")); });
+  }
+  ST.on("sim", () => { drawDepots(); ST.invalidate(); });
+
+  // Depots (from the analysis), with the vehicles the simulation has parked there.
+  const depotMarkers = [];
+  function drawDepots() {
+    for (const d of ST.sim.depots) {
+      const m = L.marker([d.lat, d.lon], {
+        pane: "stations", keyboard: false,
+        icon: L.divIcon({ className: "depot-icon", iconSize: [30, 30], iconAnchor: [15, 15],
+          html: `<div class="depot k-${d.kind}">${ST.kindIcon(d.kind, 18)}<span class="depot-count">0</span></div>` }),
+      });
+      m.on("click", () => ST.openCard({ id: "sdepot:" + d.i, render: () => depotCard(d) }));
+      depotMarkers.push(m);
+    }
+  }
+  function updateDepots(ctx) {
+    if (!ST.sim) return;
+    const show = !ST.clock.isRealtime();
+    ST.sim.depots.forEach((d, i) => {
+      const m = depotMarkers[i];
+      if (!m) return;
+      if (show && !map.hasLayer(m)) m.addTo(map);
+      if (!show && map.hasLayer(m)) map.removeLayer(m);
+      if (show && m.getElement()) m.getElement().querySelector(".depot-count").textContent = ST.sim.parkedAt(i, ctx.ms).length;
+    });
+  }
+  function depotCard(d) {
+    const parked = ST.sim.parkedAt(d.i, ST.clock.now());
+    const byRoute = new Map();
+    for (const v of parked) byRoute.set(v.route, (byRoute.get(v.route) || 0) + 1);
+    let html = `<div class="card-head"><span class="kind-badge">${ST.kindIcon(d.kind, 22)}</span><div><div class="card-title">${t("depot")}</div>` +
+      `<div class="card-sub">${t("kinds_" + d.kind)} · ${t("parkedN", { n: parked.length })} · ${t("simulated")}</div></div></div>`;
+    html += `<div class="chips-row">${[...byRoute].sort((a, b) => b[1] - a[1]).map(([r, n]) => `${chip(r)}<span class="muted small">×${n}</span>`).join(" ")}</div>`;
+    return html + `<p class="small muted">${t("depotNote")}</p>`;
+  }
 
   ST.addLayer({
     frame(ctx) {
@@ -442,13 +494,23 @@
       const seen = new Set();
       const bodies = [];
       for (const k in counts) counts[k] = 0;
-      if (realtime) {
-        for (const v of vehicles.values()) {
-          if (!v.fixes.length) continue;
-          const age = (feedTime - v.fixes.at(-1).t) / 1000;
-          if (age < STALE) counts[v.kind] = (counts[v.kind] || 0) + 1;
+      // Real time: live GPS. Any other time: the simulation (loaded on first use).
+      let list = null;
+      if (realtime) list = vehicles.values();
+      else if (ST.sim) list = ST.sim.vehiclesAt(ctx.ms);
+      else loadSim();
+      const sim = !realtime;
+      if (sim && list) lastSim = new Map(list.map(v => [v.id, v]));
+      if (list) {
+        for (const v of list) {
+          if (!sim && !v.fixes.length) continue;
+          const age = sim ? 0 : (feedTime - v.fixes.at(-1).t) / 1000;
+          const service = sim ? !OUT_OF_SERVICE.has(v.status) : age < STALE;
+          if (service) counts[v.kind] = (counts[v.kind] || 0) + 1;
           if (!ST.routeVisible(v.routeId, v.kind) && v.id !== selectedId) continue;
-          displayState(v, now);
+          // Vehicles parked in a depot are only drawn when zoomed in on it.
+          if (sim && v.status === "depot" && ctx.zoom < 16 && v.id !== selectedId) continue;
+          if (!sim) displayState(v, now);
           let m = markers.get(v.id);
           if (ctx.dots && v.id !== selectedId) {
             if (m) { hideBody(m); map.removeLayer(m.marker); markers.delete(v.id); }
@@ -474,7 +536,8 @@
           if (el) {
             if (!m.dirEl) { m.dirEl = el.querySelector(".dir"); m.vehEl = el.querySelector(".veh"); }
             m.dirEl.style.transform = `rotate(${v.brg || 0}deg)`;
-            const cls = `${age >= STALE ? "stale " : ""}${withBody ? "has-body " : ""}${v.id === selectedId ? "selected" : ""}`;
+            const state = sim ? (v.status === "depot" ? "parked " : service ? "" : "nonservice ") : age >= STALE ? "stale " : "";
+            const cls = `${state}${withBody ? "has-body " : ""}${v.id === selectedId ? "selected" : ""}`;
             if (cls !== m.cls) { m.vehEl.className = `veh k-${v.kind} ${cls}`; m.cls = cls; }
           }
         }
@@ -484,7 +547,7 @@
       for (const [id, m] of markers) {
         if (!seen.has(id)) { hideBody(m); map.removeLayer(m.marker); markers.delete(id); }
       }
-      if (ctx.slow) updateFeedState();
+      if (ctx.slow) { updateFeedState(); updateDepots(ctx); }
     },
   });
 
@@ -528,7 +591,40 @@
     return html;
   }
 
+  function simCard(id) {
+    const v = lastSim && lastSim.get(id);
+    if (!v) return null;
+    const r = ROUTES[v.routeId], sp = v.simPattern, run = v.runIdx != null ? v.runs[v.runIdx] : null;
+    const toTime = s => ST.hhmmEpoch(ST.clock.now() - (v.sec - s) * 1000);
+    let html = `<div class="card-head">${r ? chip(v.routeId) : ""}<div><div class="card-title">${sp && !OUT_OF_SERVICE.has(v.status) ? `${t("toward")} ${esc(placeName(sp.head))}` : t("st_" + v.status)}</div>` +
+      `<div class="card-sub">${t("kind_" + v.kind)} · ${t("simulated")} · ${t("duty")} ${esc(v.duty)}</div></div></div><div class="facts">`;
+    html += fact(t("state"), t("st_" + v.status));
+    let next = -1;
+    if (run && v.leg.i != null) next = v.leg.type === "shape" ? v.leg.i : v.leg.i;
+    if (run && next >= 0 && next < run.p.stops.length && !OUT_OF_SERVICE.has(v.status)) {
+      const st = STOPS[run.p.stops[next]];
+      const delay = run.times[next] - (run.start + run.p.t[next]);
+      html += fact(t("nextStop"), `${st ? esc(stopName(st)) : ""} · ${toTime(run.times[next])}`);
+      html += fact(t("delay"), Math.abs(delay) < 60 ? t("onTime") : delay > 0 ? t("late", { m: Math.round(delay / 60) }) : t("early", { m: Math.round(-delay / 60) }));
+    }
+    if (v.speed) html += fact(t("speed"), `${Math.round(v.speed)} ${t("kmh")}`);
+    html += `</div><p class="small muted">${t("simNote", { src: esc(ST.sim.label || "") })}</p>`;
+    if (r) html += `<div class="card-actions"><button class="btn" data-action="live-line" data-line="${v.routeId}">${t("line")} ${esc(r.name)}</button></div>`;
+    if (run) {
+      html += `<h4>${t("stopsOnRoute")}</h4><ol class="stoplist">`;
+      run.p.stops.forEach((si, i) => {
+        const st = STOPS[si];
+        if (!st) return;
+        const cls = next < 0 ? "" : i < next ? "past" : i === next ? "current" : "";
+        html += `<li class="${cls}"><span class="dot"></span><a href="#" class="grow" data-action="live-stop" data-id="${st.id}">${esc(stopName(st))}</a><span class="t">${toTime(run.times[i])}</span></li>`;
+      });
+      html += `</ol>`;
+    }
+    return html;
+  }
+
   function vehicleCard(id) {
+    if (id.startsWith("sim:")) return simCard(id);
     const v = vehicles.get(id);
     if (!v) return null;
     const r = ROUTES[v.routeId], p = v.pattern;
@@ -572,14 +668,15 @@
   }
 
   function openVehicle(id) {
-    const v = vehicles.get(id);
+    const sim = id.startsWith("sim:");
+    const v = sim ? lastSim && lastSim.get(id) : vehicles.get(id);
     if (!v) return;
     selectedId = id;
-    fetchTripUpdates(true);
+    if (!sim) fetchTripUpdates(true);
     ST.openCard({
       id: "veh:" + id,
-      render: () => { fetchTripUpdates(); return vehicleCard(id); },
-      after: () => { if (v.pattern) highlight([v.shapeId], ROUTES[v.routeId].color); },
+      render: () => { if (!sim) fetchTripUpdates(); return vehicleCard(id); },
+      after: () => { if (v.pattern && ROUTES[v.routeId]) highlight([v.shapeId], ROUTES[v.routeId].color); },
       onClose: () => { selectedId = null; clearHighlight(); },
     });
     ST.invalidate();
@@ -593,6 +690,20 @@
     html += `<div class="chips-row">${s.routes.slice().sort((a, b) => routeIds.indexOf(a) - routeIds.indexOf(b)).map(r =>
       `<a href="#" data-action="live-line" data-line="${r}">${chip(r)}</a>`).join("")}</div>`;
     html += `<h4>${t("departures")}</h4>`;
+    if (!ST.clock.isRealtime()) {
+      // Simulated time: departures predicted by the simulation.
+      if (!ST.sim) return html + `<p class="muted">…</p>`;
+      const list = ST.sim.departures(stopIndex.get(id), ST.clock.now()).slice(0, 25);
+      if (!list.length) return html + `<p class="muted">${t("noDepartures")}</p>`;
+      const now = ST.clock.now();
+      html += `<div class="rows">`;
+      for (const x of list) {
+        const late = x.delay >= 60 ? ` <span class="muted small">+${Math.round(x.delay / 60)}</span>` : "";
+        html += `<div class="row-item" data-action="live-veh" data-id="${x.v.id}">${ROUTES[x.route] ? chip(x.route) : ""}` +
+          `<span class="grow">${esc(placeName(x.head))}</span><span class="t">${minsText((x.time - now) / 1000)}${late}</span></div>`;
+      }
+      return html + `</div><p class="small muted">${t("simNote", { src: esc(ST.sim.label || "") })}</p>`;
+    }
     if (!tripUpdates) return html + `<p class="muted">…</p>`;
     const now = Date.now();
     const list = (tripUpdates.byStop.get(id) || []).filter(x => x.st.time > now - 30000 && x.st.time < now + 3600000)
@@ -653,7 +764,10 @@
   ST.on("action", (action, data) => {
     if (action === "live-stop") openStop(data.id);
     else if (action === "live-line") openLine(data.line);
-    else if (action === "live-veh") { const v = vehicles.get(data.id); if (v) { openVehicle(data.id); ST.focus(v.ll || [v.fixes.at(-1).lat, v.fixes.at(-1).lon]); } }
+    else if (action === "live-veh") {
+      const v = data.id.startsWith("sim:") ? lastSim && lastSim.get(data.id) : vehicles.get(data.id);
+      if (v) { openVehicle(data.id); ST.focus(v.ll || [v.fixes.at(-1).lat, v.fixes.at(-1).lon]); }
+    }
   });
 
   // ---------- Stops layer ----------
@@ -721,6 +835,9 @@
     }
     return out;
   });
+
+  // Shared with the simulation (js/sim.js).
+  ST.transit = { ROUTES, STOPS, PATTERNS, shape, along, kindOf };
 
   window.liveDebug = { vehicles, shape, project, PATTERNS, fetchTripUpdates, get tripUpdates() { return tripUpdates; } };
 })();

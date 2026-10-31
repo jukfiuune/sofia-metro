@@ -65,6 +65,20 @@ A live map of Sofia's public transport, inspired by [livetransport.eu](https://l
 - **Running locally:** `recorder/install.sh` installs a frozen copy of the script as a systemd user service (`sofia-recorder`), which restarts after crashes and on boot. Editing the project or switching branches doesn't affect the running copy; run `install.sh` again to update it. For it to run without a logged-in session: `sudo loginctl enable-linger $USER`.
 - **Logs:** `journalctl --user -u sofia-recorder`.
 
+## Simulation (planner branch)
+
+At any time other than "Now", or at any speed-up, buses, trams and trolleybuses are simulated instead of shown live. The metro is simulated as before.
+
+- **Duties:** every vehicle duty of the day (GTFS block) leaves the nearest depot of its kind, drives its trips and waits at the terminus for its next departure. During long breaks it goes back to the depot, and at the end of the day it returns there.
+- **Travel times** come from the analysis, not the timetable: each stop-to-stop stretch takes its free-flow time times the slow-down for that day type and hour, and each stop its typical dwell. Lateness builds up and is absorbed at layovers, as in reality.
+- **Cards:**
+  - **Vehicle:** state, next stop with predicted time and delay, and the predicted time at every stop.
+  - **Stop:** predicted departures with expected lateness.
+  - **Depot:** parked vehicles by line.
+- **Data:** `data/sim.js` (about 375 KB compressed) is loaded only on first use. It holds the timetable for every date in the feed, plus the travel-time profiles and depots. Build it with `python3 tools/build_sim.py --gtfs ... --profiles analysis/out/profiles.json --depots analysis/out/depots.json --label "..."`.
+- **Current data:** for now the profiles and depots come from the fake week, so the app labels them "fake week, test data". Real profiles replace them once the server has recorded enough.
+- **Speed:** about 750 simulated vehicles at the morning peak take about 0.4 ms per frame to compute.
+
 ## Analysis (planner branch)
 
 Scripts in `analysis/` turn recordings into the data the simulation and route planner will use. They read a recording directory without disturbing the recorder, and work the same on real and fake recordings.
