@@ -347,18 +347,25 @@
   }
   function hideBody(m) { if (m.body) { for (const l of m.body) map.removeLayer(l); m.body = null; } }
 
-  const GAP = 0.6;
-  function drawBody(m, v, mpp) {
+  // The feed position is the front of the vehicle: standing at a stop, 12 m and 18 m
+  // vehicles alike report within ~2 m of the stop pole. So bodies extend backwards from
+  // it, and are drawn on the right-hand side of the road (shapes follow the centre line).
+  const GAP = 0.6, RIGHT = 1.7, FRONT = 0.5;
+  const bodyLength = v => { const s = sectionsFor(v); return s.reduce((a, b) => a + b, 0) + GAP * (s.length - 1); };
+  function offsetLL(sh, s, right) {
+    const a = along(sh, s), r = a.brg * Math.PI / 180;
+    return [a.ll[0] - Math.sin(r) * right / KY, a.ll[1] + Math.cos(r) * right / KX];
+  }
+  function drawBody(m, v, front, mpp) {
     const sh = shape(v.shapeId);
     const secs = sectionsFor(v);
-    const total = secs.reduce((a, b) => a + b, 0) + GAP * (secs.length - 1);
     const w = Math.max(4, Math.min(14, 2.55 / mpp));
-    let s = v.sDisp + total / 2;
+    let s = front;
     const lines = [];
     for (const len of secs) {
       const a = s, b = s - len, pts = [];
       const steps = Math.max(2, Math.ceil(len / 3));
-      for (let i = 0; i <= steps; i++) pts.push(along(sh, a - (a - b) * i / steps).ll);
+      for (let i = 0; i <= steps; i++) pts.push(offsetLL(sh, a - (a - b) * i / steps, RIGHT));
       lines.push(pts);
       s = b - GAP;
     }
@@ -388,6 +395,27 @@
     return lines[0][Math.floor(lines[0].length / 2)];
   }
 
+  /** GPS error can put a queued vehicle's front inside the one ahead; draw it just behind instead. */
+  function separateQueues(list) {
+    const xy = b => [(b.v.ll[1] - 23.32) * KX, (b.v.ll[0] - LAT0) * KY];
+    for (let pass = 0; pass < 2; pass++) {
+      list.sort((a, b) => b.front - a.front);
+      for (const a of list) for (const b of list) {
+        if (a === b) continue;
+        let dBrg = Math.abs(a.v.brg - b.v.brg) % 360;
+        if (dBrg > 180) dBrg = 360 - dBrg;
+        if (dBrg > 35) continue;
+        const [ax, ay] = xy(a), [bx, by] = xy(b);
+        const r = a.v.brg * Math.PI / 180, hx = Math.sin(r), hy = Math.cos(r);
+        const dx = ax - bx, dy = ay - by;
+        const ahead = dx * hx + dy * hy - (a.front - a.v.sDisp) + (b.front - b.v.sDisp);   // a's front ahead of b's front
+        const lateral = Math.abs(dx * hy - dy * hx);
+        const need = a.len + 1.0;
+        if (lateral < 2.5 && ahead >= 0 && ahead < need) b.front -= need - ahead;
+      }
+    }
+  }
+
   const counts = { tram: 0, trolley: 0, bus: 0, night: 0 };
   let selectedId = null;
 
@@ -396,6 +424,7 @@
       const realtime = ST.clock.isRealtime();
       const now = Date.now();
       const seen = new Set();
+      const bodies = [];
       for (const k in counts) counts[k] = 0;
       if (realtime) {
         for (const v of vehicles.values()) {
@@ -418,8 +447,8 @@
             markers.set(v.id, m);
           }
           const withBody = ctx.bodies && v.onShape && age < STALE;
-          m.marker.setLatLng(withBody ? drawBody(m, v, ctx.mpp) : v.ll);
-          if (!withBody) hideBody(m);
+          if (withBody) bodies.push({ v, m, front: v.sDisp + FRONT, len: bodyLength(v) });
+          else { hideBody(m); m.marker.setLatLng(v.ll); }
           const el = m.marker.getElement();
           if (el) {
             if (!m.dirEl) { m.dirEl = el.querySelector(".dir"); m.vehEl = el.querySelector(".veh"); }
@@ -428,6 +457,8 @@
             if (cls !== m.cls) { m.vehEl.className = `veh k-${v.kind} ${cls}`; m.cls = cls; }
           }
         }
+        separateQueues(bodies);
+        for (const b of bodies) b.m.marker.setLatLng(drawBody(b.m, b.v, b.front, ctx.mpp));
       }
       for (const [id, m] of markers) {
         if (!seen.has(id)) { hideBody(m); map.removeLayer(m.marker); markers.delete(id); }
