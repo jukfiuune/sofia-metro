@@ -128,7 +128,21 @@ def route_on_tracks(routes, stops, shapes, patterns, trips, calendars, lat0, ref
             lasts.add(v[-1][1])
             pairs.update((a[1], b[1]) for a, b in zip(v, v[1:]))
 
-    turns = {f"{a}>{b}": net.turnback(states[patterns[a]["s1"]], states[patterns[b]["s0"]]) for a, b in sorted(pairs)}
+    # Empty runs between a depot and the stations where runs start or end (the app sends
+    # trains there and back outside the timetable) need the turnbacks onto them too.
+    station = lambda sid: stops[sid].get("parent_station") or sid
+    at_depot = {(r, sid) for dp in DEPOTS.values() for r, sids in dp["stations"].items() for sid in sids}
+    for a in lasts:
+        end = station(patterns[a]["stops"][-1])
+        pairs.update((a, q) for q, p in enumerate(patterns)
+                     if station(p["stops"][0]) == end and (p["route"], p["stops"][-1]) in at_depot)
+    for b in firsts:
+        start = station(patterns[b]["stops"][0])
+        pairs.update((q, b) for q, p in enumerate(patterns)
+                     if station(p["stops"][-1]) == start and (p["route"], p["stops"][0]) in at_depot)
+
+    tail_spots = net.stable_spots()
+    turns = {f"{a}>{b}": net.turnback(states[patterns[a]["s1"]], states[patterns[b]["s0"]], tail_spots) for a, b in sorted(pairs)}
 
     depots = {}
     depot_station = {}
@@ -180,6 +194,7 @@ def route_on_tracks(routes, stops, shapes, patterns, trips, calendars, lat0, ref
         if p["s0"] not in stable_out:
             stable_out[p["s0"]] = net.from_stables(states[p["s0"]], spots)
     used = {net.paths[i][0][-1] for v in stable_in.values() for i in v} | {net.paths[i][0][0] for v in stable_out.values() for i in v}
+    used |= {net.paths[i][0][k] for v in turns.values() for i in v for k in net.paths[i][1] if net.paths[i][0][k] in spots}
     stable_room = {s: round(net.spot_room(s), 1) for s in sorted(used)}
 
     # Which lines use each track (for colouring) and a representative line path.
@@ -212,7 +227,7 @@ def route_on_tracks(routes, stops, shapes, patterns, trips, calendars, lat0, ref
                   for n, rv in net.paths],
         "tracks": net.track_lines(route_edges),
         "profiles": profiles,
-        "turns": turns,
+        "turns": turns,                # "arrival pattern>departure pattern" -> [path, alternative path]
         "depots": depots,
         "stable": {"in": stable_in, "out": stable_out, "room": stable_room},
         "station_pos": station_pos,
