@@ -404,6 +404,50 @@
     statusFeed.title = title || "";
   }
 
+  // ---------- Dot layer ----------
+  // Zoomed out, every vehicle is a small dot on one canvas: hundreds of labelled DOM
+  // markers are far too heavy for phones to composite. Labelled markers start at DOT_ZOOM.
+  const DOT_ZOOM = 14, DOT_PAD = 0.15;
+  const dotCanvas = L.DomUtil.create("canvas", "dot-layer", map.getPane("vehicles"));
+  const dotCtx = dotCanvas.getContext("2d");
+  let dots = [], dotOrigin = L.point(0, 0);
+  function drawDots() {
+    const size = map.getSize(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    const pad = size.multiplyBy(DOT_PAD).round();
+    dotOrigin = map.containerPointToLayerPoint(pad.multiplyBy(-1));
+    const w = size.x + 2 * pad.x, h = size.y + 2 * pad.y;
+    if (dotCanvas.width !== Math.round(w * dpr) || dotCanvas.height !== Math.round(h * dpr)) {
+      dotCanvas.width = Math.round(w * dpr); dotCanvas.height = Math.round(h * dpr);
+      dotCanvas.style.width = w + "px"; dotCanvas.style.height = h + "px";
+    }
+    L.DomUtil.setPosition(dotCanvas, dotOrigin);
+    dotCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    dotCtx.clearRect(0, 0, w, h);
+    if (!dots.length) return;
+    const r = map.getZoom() >= 12.5 ? 4 : 3.2;
+    dotCtx.lineWidth = 1.5;
+    dotCtx.strokeStyle = isDark() ? "#16191e" : "#ffffff";
+    for (const d of dots) {
+      const p = map.latLngToLayerPoint(d.ll);
+      d.x = p.x - dotOrigin.x; d.y = p.y - dotOrigin.y;
+      dotCtx.beginPath();
+      dotCtx.arc(d.x, d.y, d.r || r, 0, 6.2832);
+      dotCtx.fillStyle = d.color;
+      dotCtx.fill();
+      dotCtx.stroke();
+    }
+  }
+  map.on("zoomstart", () => { dotCanvas.style.visibility = "hidden"; });
+  map.on("zoomend", () => { dotCanvas.style.visibility = ""; });
+  // Taps on dots: the nearest dot within 14 px.
+  map.on("click", e => {
+    if (map.getZoom() >= DOT_ZOOM || !dots.length) return;
+    const p = map.latLngToLayerPoint(e.latlng).subtract(dotOrigin);
+    let best = null, bd = 14;
+    for (const d of dots) { const dd = Math.hypot(d.x - p.x, d.y - p.y); if (dd < bd) { bd = dd; best = d; } }
+    if (best && best.onClick) best.onClick();
+  });
+
   // ---------- Frame loop ----------
   // Redraw only as often as the fastest vehicle moves about half a pixel (and at
   // least 4× a second for the clock); zoomed out that is a few times a second.
@@ -430,9 +474,13 @@
     lastDraw = now;
     const slow = now - lastSlow > 240;
     if (slow) lastSlow = now;
-    const ctx = { now, ms: clock.now(), zoom: map.getZoom(), mpp: metresPerPixel(), slow,
-      bodies: bodiesWanted(), view: map.getBounds().pad(0.25) };
+    const zoom = map.getZoom();
+    const ctx = { now, ms: clock.now(), zoom, mpp: metresPerPixel(), slow,
+      bodies: bodiesWanted(), view: map.getBounds().pad(0.25), dots: zoom < DOT_ZOOM,
+      dot: (ll, color, onClick, r) => dots.push({ ll, color, onClick, r }) };
+    dots = [];
     for (const l of layers) l.frame(ctx);
+    drawDots();
     drawCost = drawCost * 0.9 + (performance.now() - now) * 0.1;
     if (slow) {
       const { p } = clockAt(ctx.ms);

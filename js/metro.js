@@ -108,25 +108,30 @@
     return [a[0] + dy / len * ext / KY, a[1] + dx / len * ext / KX];
   }
 
-  const CAR_GAP = 0.9, SECTION_GAP = 0.35;
-  /** Centre-lines of each car body section of a train centred at st.d. */
+  const CAR_GAP = 0.9, SECTION_GAP = 0.7;
+  /** Centre-lines of each car body section of a train centred at st.d, and the
+   *  articulation joints between sections of the same car. */
   function trainSections(type, st) {
     let [lo, hi] = travelPiece(st);
     if (hi - lo < 3) { lo = 0; hi = st.P.len; }
-    const piece = [lo, hi], out = [];
+    const piece = [lo, hi], out = [], joints = [];
+    const line = (a, b) => {
+      const pts = [], steps = Math.max(1, Math.ceil((a - b) / 4));
+      for (let i = 0; i <= steps; i++) pts.push(pieceAt(st.P, piece, a - (a - b) * i / steps));
+      return pts;
+    };
     let s = st.d + type.length / 2;                 // front of the train
     for (const car of type.cars) {
       const sec = car / type.sections;
       for (let k = 0; k < type.sections; k++) {
         const gapFront = k === 0 ? CAR_GAP / 2 : SECTION_GAP / 2;
         const gapBack = k === type.sections - 1 ? CAR_GAP / 2 : SECTION_GAP / 2;
-        const a = s - gapFront, b = s - sec + gapBack, pts = [];
-        const steps = Math.max(2, Math.ceil((a - b) / 4));
-        for (let i = 0; i <= steps; i++) pts.push(pieceAt(st.P, piece, a - (a - b) * i / steps));
-        out.push(pts);
+        out.push(line(s - gapFront, s - sec + gapBack));
+        if (k < type.sections - 1) joints.push(line(s - sec + gapBack + 0.1, s - sec - gapBack - 0.1));
         s -= sec;
       }
     }
+    out.joints = joints;
     return out;
   }
 
@@ -651,7 +656,7 @@
   }
 
   function trainCard(key) {
-    const tm = trainMarkers.get(key);
+    const tm = states.get(key);
     if (!tm) return null;
     const { v, st, sec } = tm;
     const r = v.route, leg = st.leg;
@@ -689,7 +694,7 @@
     const own = D.patterns.filter(p => p.route === r);
     const maxStops = Math.max(...own.map(p => p.stops.length));
     const dirs = own.filter(p => p.stops.length === maxStops).filter((p, i, a) => a.findIndex(q => q.headsign === p.headsign) === i);
-    const running = [...trainMarkers.values()].filter(tm => tm.v.route === r && tm.st.kind === "trip").length;
+    const running = [...states.values()].filter(x => x.v.route === r && x.st.kind === "trip").length;
     let html = `<div class="card-head">${chip(r)}<div><div class="card-title">${mt("metroLine")} ${D.routes[r].name}</div>` +
       `<div class="card-sub">${mt("trainsRunning", { n: running })}</div></div></div>`;
     html += `<div class="card-actions"><button class="btn" data-action="only-line" data-line="${r}">${ST.filters.lines.size === 1 && ST.filters.lines.has(r) ? t("showAllLines") : t("showLineOnly")}</button></div>`;
@@ -732,6 +737,7 @@
 
   // ---------- Trains ----------
   const trainMarkers = new Map(); // vehicle key -> {marker, cls, ...}
+  const states = new Map();       // vehicle key -> {v, st, sec} as of the last frame
   window.metroDebug = { map, vehiclesFor, vehicleState, paths, pathAt, trainMarkers };
 
   function trainIcon(route) {
@@ -755,19 +761,32 @@
     const w = Math.max(5, Math.min(16, 2.9 / mpp));
     const color = D.routes[v.route].color;
     const fill = cls === "parked" ? "#c4c7cc" : cls === "nonservice" ? "#ffffff" : color;
-    if (!tm.body || tm.body.length !== sections.length * 2) {
+    const joints = sections.joints, nj = joints.length, outline = ST.dark ? "#e8eaed" : "#1d1f23";
+    if (!tm.body || tm.body.length !== sections.length * 2 + nj * 2) {
       hideBody(tm);
       tm.body = [];
+      const opts = { renderer: bodyRenderer, interactive: true, lineCap: "butt", lineJoin: "round" };
       for (let i = 0; i < sections.length; i++) {
-        const opts = { renderer: bodyRenderer, interactive: true, lineCap: "butt", lineJoin: "round" };
-        const outline = L.polyline(sections[i], { ...opts, color: ST.dark ? "#e8eaed" : "#1d1f23", weight: w + 3 }).addTo(map);
+        const o = L.polyline(sections[i], { ...opts, color: outline, weight: w + 3 }).addTo(map);
         const body = L.polyline(sections[i], { ...opts, color: fill, weight: w }).addTo(map);
-        for (const l of [outline, body]) l.on("click", () => openTrain(tm.key));
-        tm.body.push(outline, body);
+        tm.body.push(o, body);
       }
+      // Articulation bellows between the two sections of a car.
+      for (const pts of joints) tm.body.push(L.polyline(pts, { ...opts, color: outline, weight: w * 0.7 + 3 }).addTo(map));
+      for (const pts of joints) tm.body.push(L.polyline(pts, { ...opts, color: ST.dark ? "#59606b" : "#3b4048", weight: w * 0.7, dashArray: "2 1.5" }).addTo(map));
+      for (const l of tm.body) l.on("click", () => openTrain(tm.key));
       tm.bodyStyle = "";
     }
     const style = `${w}|${fill}|${ST.dark}`;
+    const base = sections.length * 2;
+    joints.forEach((pts, i) => {
+      tm.body[base + i].setLatLngs(pts);
+      tm.body[base + nj + i].setLatLngs(pts);
+      if (style !== tm.bodyStyle) {
+        tm.body[base + i].setStyle({ weight: w * 0.7 + 3, color: outline });
+        tm.body[base + nj + i].setStyle({ weight: w * 0.7, color: ST.dark ? "#59606b" : "#3b4048" });
+      }
+    });
     for (let i = 0; i < sections.length; i++) {
       tm.body[2 * i].setLatLngs(sections[i]);
       tm.body[2 * i + 1].setLatLngs(sections[i]);
@@ -812,6 +831,12 @@
         else ({ ll, brg } = pathAt(st.P, st.d));
         const inView = ctx.view.contains(ll);
         let tm = trainMarkers.get(v.key);
+        states.set(v.key, { v, st, sec });
+        if (ctx.dots && !(ST.card && ST.card.id === "train:" + v.key)) {
+          if (tm) { hideBody(tm); map.removeLayer(tm.marker); trainMarkers.delete(v.key); }
+          if (inView && st.kind !== "depot") ctx.dot(ll, D.routes[v.route].color, () => openTrain(v.key), 4.6);
+          continue;
+        }
         if (!inView && !(tm && ST.card && ST.card.id === "train:" + v.key)) {
           if (tm) { hideBody(tm); map.removeLayer(tm.marker); trainMarkers.delete(v.key); }
           continue;

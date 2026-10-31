@@ -229,6 +229,7 @@ summary { cursor: pointer; padding: 10px 2px; font-weight: 700; }
 .veh.has-body .dir::before { top: 1px; border-left-width: 4px; border-right-width: 4px; border-bottom-width: 5px; border-bottom-color: var(--t); filter: none; }
 .veh.has-body.selected .dot { box-shadow: none; }
 .leaflet-bodies-pane canvas { cursor: pointer; }
+.dot-layer { position: absolute; left: 0; top: 0; pointer-events: none; }
 
 /* Depots */
 .depot-icon { background: none; border: 0; }

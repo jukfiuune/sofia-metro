@@ -350,45 +350,61 @@
   // The feed position is the front of the vehicle: standing at a stop, 12 m and 18 m
   // vehicles alike report within ~2 m of the stop pole. So bodies extend backwards from
   // it, and are drawn on the right-hand side of the road (shapes follow the centre line).
-  const GAP = 0.6, RIGHT = 1.7, FRONT = 0.5;
+  const GAP = 0.9, RIGHT = 1.7, FRONT = 0.5;
   const bodyLength = v => { const s = sectionsFor(v); return s.reduce((a, b) => a + b, 0) + GAP * (s.length - 1); };
   function offsetLL(sh, s, right) {
     const a = along(sh, s), r = a.brg * Math.PI / 180;
     return [a.ll[0] - Math.sin(r) * right / KY, a.ll[1] + Math.cos(r) * right / KX];
   }
+  const BELLOWS = ST.dark ? "#59606b" : "#3b4048";
   function drawBody(m, v, front, mpp) {
     const sh = shape(v.shapeId);
     const secs = sectionsFor(v);
     const w = Math.max(4, Math.min(14, 2.55 / mpp));
-    let s = front;
-    const lines = [];
-    for (const len of secs) {
-      const a = s, b = s - len, pts = [];
-      const steps = Math.max(2, Math.ceil(len / 3));
+    const line = (a, b) => {
+      const pts = [], steps = Math.max(1, Math.ceil((a - b) / 3));
       for (let i = 0; i <= steps; i++) pts.push(offsetLL(sh, a - (a - b) * i / steps, RIGHT));
-      lines.push(pts);
-      s = b - GAP;
-    }
+      return pts;
+    };
+    // Body sections, with the articulation (bellows) between them as narrower dark joints.
+    let s = front;
+    const lines = [], joints = [];
+    secs.forEach((len, i) => {
+      lines.push(line(s, s - len));
+      s -= len;
+      if (i < secs.length - 1) { joints.push(line(s + 0.15, s - GAP - 0.15)); s -= GAP; }
+    });
     const color = ROUTES[v.routeId] ? ROUTES[v.routeId].color : "#6c757d";
-    if (!m.body || m.body.length !== lines.length * 2) {
+    const outline = ST.dark ? "#e8eaed" : "#1d1f23";
+    const n = lines.length * 2 + joints.length * 2;
+    if (!m.body || m.body.length !== n) {
       hideBody(m);
       m.body = [];
+      const opts = { renderer: bodyRenderer, interactive: true, lineCap: "butt", lineJoin: "round" };
+      for (const pts of joints) m.body.push(L.polyline(pts, { ...opts, color: outline, weight: w * 0.7 + 3 }).addTo(map));
       for (const pts of lines) {
-        const opts = { renderer: bodyRenderer, interactive: true, lineCap: "butt", lineJoin: "round" };
-        const o = L.polyline(pts, { ...opts, color: ST.dark ? "#e8eaed" : "#1d1f23", weight: w + 3 }).addTo(map);
-        const body = L.polyline(pts, { ...opts, color, weight: w }).addTo(map);
-        for (const l of [o, body]) l.on("click", () => openVehicle(v.id));
-        m.body.push(o, body);
+        m.body.push(L.polyline(pts, { ...opts, color: outline, weight: w + 3 }).addTo(map));
+        m.body.push(L.polyline(pts, { ...opts, color, weight: w }).addTo(map));
       }
+      for (const pts of joints) m.body.push(L.polyline(pts, { ...opts, color: BELLOWS, weight: w * 0.7, dashArray: "2 1.5" }).addTo(map));
+      for (const l of m.body) l.on("click", () => openVehicle(v.id));
       m.bodyStyle = "";
     }
-    const style = `${w}|${color}|${ST.dark}`;
-    lines.forEach((pts, i) => {
-      m.body[2 * i].setLatLngs(pts);
-      m.body[2 * i + 1].setLatLngs(pts);
+    const style = `${w}|${color}|${ST.dark}`, nj = joints.length;
+    joints.forEach((pts, i) => {
+      m.body[i].setLatLngs(pts);
+      m.body[nj + lines.length * 2 + i].setLatLngs(pts);
       if (style !== m.bodyStyle) {
-        m.body[2 * i].setStyle({ weight: w + 3, color: ST.dark ? "#e8eaed" : "#1d1f23" });
-        m.body[2 * i + 1].setStyle({ weight: w, color });
+        m.body[i].setStyle({ weight: w * 0.7 + 3, color: outline });
+        m.body[nj + lines.length * 2 + i].setStyle({ weight: w * 0.7, color: ST.dark ? "#59606b" : "#3b4048" });
+      }
+    });
+    lines.forEach((pts, i) => {
+      m.body[nj + 2 * i].setLatLngs(pts);
+      m.body[nj + 2 * i + 1].setLatLngs(pts);
+      if (style !== m.bodyStyle) {
+        m.body[nj + 2 * i].setStyle({ weight: w + 3, color: outline });
+        m.body[nj + 2 * i + 1].setStyle({ weight: w, color });
       }
     });
     m.bodyStyle = style;
@@ -434,6 +450,11 @@
           if (!ST.routeVisible(v.routeId, v.kind) && v.id !== selectedId) continue;
           displayState(v, now);
           let m = markers.get(v.id);
+          if (ctx.dots && v.id !== selectedId) {
+            if (m) { hideBody(m); map.removeLayer(m.marker); markers.delete(v.id); }
+            if (ctx.view.contains(v.ll)) ctx.dot(v.ll, ROUTES[v.routeId] ? ROUTES[v.routeId].color : "#6c757d", () => openVehicle(v.id), age >= STALE ? 2.4 : undefined);
+            continue;
+          }
           if (!ctx.view.contains(v.ll) && v.id !== selectedId) {
             if (m) { hideBody(m); map.removeLayer(m.marker); markers.delete(v.id); }
             continue;
