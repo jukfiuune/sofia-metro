@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 *.zip
 .ffharness.html
+recordings/
+__pycache__/

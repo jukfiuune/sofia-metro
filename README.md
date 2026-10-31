@@ -55,6 +55,15 @@ A live map of Sofia's public transport, inspired by [livetransport.eu](https://l
 - **Non-revenue timing:** depot runs go about 40 km/h on running track and 15 km/h on yard tracks, and turnbacks about 29 km/h.
 - **Display:** when zoomed in (zoom 15 and up), the two directions are drawn apart, so both tracks and the crossovers between them are visible.
 
+## Recorder
+
+`recorder/record.py` logs every live vehicle every 10 s, around the clock, for later analysis: depot runs, travel times between stops by hour and weekday, congestion, and the effect of bus lanes. It is kept small and stores raw positions only, so analysis can change and be re-run over the whole history without restarting it.
+
+- **Storage:** one SQLite file per service day (03:00–03:00) in `recordings/` (not in git). Positions are integers, and vehicle, trip and stop ids are stored in lookup tables. A standing vehicle is written once a minute instead of every poll. The static timetable is saved whenever it changes, so delays can later be computed against the right schedule.
+- **Reading while it runs:** the files are in WAL mode, so other scripts can read them while it writes. `python3 recorder/status.py [--hours]` shows polls, rows, vehicles, gaps and size per day. Its `open_day()` and `positions()` functions are meant for analysis scripts.
+- **Running full time:** `recorder/install.sh` installs a frozen copy of the script as a systemd user service (`sofia-recorder`), which restarts after crashes and on boot. Editing the project or switching branches doesn't affect the running copy; run `install.sh` again to update it. For it to run without a logged-in session: `sudo loginctl enable-linger $USER`.
+- **Logs:** `journalctl --user -u sofia-recorder`.
+
 ## Performance
 
 - **Redraw rate:** the map redraws only as often as the fastest vehicle moves about half a pixel. That's 4 times a second zoomed out, and every frame only when zoomed right in.

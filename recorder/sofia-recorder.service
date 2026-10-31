@@ -1,0 +1,15 @@
+[Unit]
+Description=Sofia transport live-position recorder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Runs a frozen copy (installed by recorder/install.sh), so editing or switching
+# branches in the project folder never changes the running recorder.
+ExecStart=/usr/bin/python3 -I %h/.local/share/sofia-recorder/record.py --dir %h/Documents/sofiametro/recordings
+Restart=always
+RestartSec=30
+Nice=10
+
+[Install]
+WantedBy=default.target
