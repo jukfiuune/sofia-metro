@@ -143,7 +143,7 @@ class Store:
             self.ids[key] = self.db.execute(f"SELECT id FROM {table} WHERE code=?", (code,)).fetchone()[0]
         return self.ids[key]
 
-    def write(self, now, feed_ts, rows):
+    def write(self, now, feed_ts, rows, commit=True):
         day = service_day(feed_ts or now)
         if day != self.day:
             self._open(day)
@@ -162,7 +162,8 @@ class Store:
             self.last[code] = {"ts": ts, "state": state, "written": ts}
             written += 1
         self.db.execute("INSERT OR REPLACE INTO poll VALUES (?,?,?,?)", (now, feed_ts, len(rows), written))
-        self.db.commit()
+        if commit:                      # the fake-data generator commits in batches
+            self.db.commit()
         return written
 
 

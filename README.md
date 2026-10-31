@@ -65,6 +65,33 @@ A live map of Sofia's public transport, inspired by [livetransport.eu](https://l
 - **Running locally:** `recorder/install.sh` installs a frozen copy of the script as a systemd user service (`sofia-recorder`), which restarts after crashes and on boot. Editing the project or switching branches doesn't affect the running copy; run `install.sh` again to update it. For it to run without a logged-in session: `sudo loginctl enable-linger $USER`.
 - **Logs:** `journalctl --user -u sofia-recorder`.
 
+## Analysis (planner branch)
+
+Scripts in `analysis/` turn recordings into the data the simulation and route planner will use. They read a recording directory without disturbing the recorder, and work the same on real and fake recordings.
+
+| Script | Output |
+|---|---|
+| `fake.py` | A fake recording: vehicles drive their real timetable duties through an invented traffic model (morning and evening peaks, worse near the centre, milder on bus-lane stretches and for trams), with stop dwells, late departures, layovers and depot runs. It is written through the recorder's own storage code, plus `truth.json` with the answers: depots, each stretch's congestion and bus lanes. About 1 minute per day. |
+| `passages.py` | `out/passages.sqlite`: when each vehicle arrived at and left each stop of each trip, from fixes snapped to the trip's route shape. About 2 minutes per day. |
+| `profiles.py` | `out/profiles.json`: per stop-to-stop stretch, the free-flow run time (10th percentile) and the median run time by day type (weekday / Saturday / Sunday) and hour; plus dwell times per stop. |
+| `depots.py` | `out/depots.json`: places where several vehicles stand for 10+ minutes without a trip, with the vehicle kinds and pull-out / pull-in times. |
+| `validate.py` | Compares the analysis of a fake recording with its answer key. |
+| `gtfs.py` | Shared timetable loader for one service day (cached). |
+
+```bash
+python3 analysis/fake.py --gtfs recordings/gtfs/<file>.zip --date 2026-11-02 --days 5 --out recordings-fake
+python3 analysis/passages.py --dir recordings-fake --out analysis/out/fake-passages.sqlite
+python3 analysis/profiles.py --db analysis/out/fake-passages.sqlite
+python3 analysis/depots.py --dir recordings-fake --out analysis/out/fake-depots.json
+python3 analysis/validate.py --fake recordings-fake --profiles analysis/out/fake-profiles.json --depots analysis/out/fake-depots.json
+```
+
+**Accuracy on one fake weekday:**
+- **Depots:** all 10 found within 3 m.
+- **Congestion, grouped by true slow-down:** the measured slow-down matches the truth: ×1.09 for true ×1.0–1.1, ×1.21 for ×1.1–1.25, ×1.35 for ×1.25–1.5, ×1.57 for ×1.5–2.0, ×1.99 for ×2+.
+- **Bus lanes:** the effect shows without the analysis being told where the lanes are (peak ×1.18 with a lane against ×1.25 without).
+- **Single stretches:** individual stretch-hours are still noisy after one day, with only 2–6 runs each.
+
 ## Performance
 
 - **Redraw rate:** the map redraws only as often as the fastest vehicle moves about half a pixel. That's 4 times a second zoomed out, and every frame only when zoomed right in.

@@ -5,3 +5,7 @@ __pycache__/
 .ffharness.html
 recordings/
 __pycache__/
+recordings*/
+analysis/.cache/
+analysis/out/
+__pycache__/
