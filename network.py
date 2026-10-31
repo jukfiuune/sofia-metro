@@ -13,7 +13,7 @@ from collections import defaultdict
 from tracks import NON_REVENUE
 
 TAIL_SEARCH = 1500.0     # m (+ reversal cost) within which a tail-track turnback must exist
-DEPOT_SLOTS = 10         # yard tracks used per depot
+YARD_RADIUS = 800.0      # m from the depot centre to look for stabling tracks
 STABLE_SEARCH = 900.0    # m to look for a siding / tail to stable a train overnight
 
 
@@ -179,16 +179,24 @@ class Network:
         return self.add_path(*r)
 
     def depot_slots(self, depot):
+        """Stabling tracks of a depot yard: [(dead-end node, metres of plain track before the first switch)]."""
         g = self.g
         cx, cy = depot["lon"] * g.kx, depot["lat"] * g.ky
         ends = [v for v, nb in enumerate(g.adj)
                 if len(nb) == 1 and all(s == "yard" for s in nb.values())
-                and math.hypot(g.xy[v][0] - cx, g.xy[v][1] - cy) < 800]
+                and math.hypot(g.xy[v][0] - cx, g.xy[v][1] - cy) < YARD_RADIUS]
         ends.sort(key=lambda v: (g.xy[v][0], g.xy[v][1]))
-        if len(ends) > DEPOT_SLOTS:
-            step = len(ends) / DEPOT_SLOTS
-            ends = [ends[int(i * step)] for i in range(DEPOT_SLOTS)]
-        return ends
+        out = []
+        for e in ends:
+            prev, v, length = None, e, 0.0
+            while True:
+                w = next(w for w in g.adj[v] if w != prev)
+                length += g.dist(v, w)
+                prev, v = v, w
+                if len(g.adj[v]) != 2:
+                    break
+            out.append((e, length))
+        return out
 
     def to_depot(self, end, slot):
         a, ha = end

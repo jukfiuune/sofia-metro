@@ -30,18 +30,22 @@ FEED_URL = "https://gtfs.sofiatraffic.bg/api/v1/static"
 METRO_ROUTES = ("M1", "M2", "M3", "M4")
 OUT = Path(__file__).resolve().parent / "data" / "metro.js"
 OSM_CACHE = Path(__file__).resolve().parent / "data" / "osm_tracks.json"
+YARD_END = 4.0      # m kept clear before a stabling track's buffer stop
+YARD_GAP = 8.0      # m between trains parked one behind the other
+YARD_MAX = 4        # trains per stabling track at most
 
 # Depots (the GTFS feed has none). `stations` lists, per line, the stop_ids from
 # which trains run to / from the depot; lat/lon is the yard centre used to find
-# its stabling tracks in OSM. Runs that start or end anywhere else are stabled
+# its stabling tracks in OSM; `train` is the longest train it keeps (m), which sets
+# how many trains fit one behind the other on each stabling track. Runs that start or end anywhere else are stabled
 # overnight on the nearest siding / tail track of that station.
 DEPOTS = {
     "obelya": {
-        "name": "Метродепо „Обеля“", "en": "Obelya depot", "lat": 42.7330, "lon": 23.2624,
+        "name": "Метродепо „Обеля“", "en": "Obelya depot", "lat": 42.7330, "lon": 23.2624, "train": 84.0,
         "stations": {"M1": ["M1"], "M4": ["M1"], "M2": ["M0"]},
     },
     "zemlyane": {
-        "name": "Метродепо „Земляне“", "en": "Zemlyane depot (M3)", "lat": 42.6815, "lon": 23.2762,
+        "name": "Метродепо „Земляне“", "en": "Zemlyane depot (M3)", "lat": 42.6815, "lon": 23.2762, "train": 61.0,
         "stations": {"M3": ["M315", "M314"]},
     },
 }
@@ -129,9 +133,11 @@ def route_on_tracks(routes, stops, shapes, patterns, trips, calendars, lat0, ref
     depots = {}
     depot_station = {}
     for key, dp in DEPOTS.items():
-        slots = net.depot_slots(dp)
-        if not slots:
+        tracks = [(e, int((length - YARD_END) // (dp["train"] + YARD_GAP))) for e, length in net.depot_slots(dp)]
+        tracks = [(e, min(cap, YARD_MAX)) for e, cap in tracks if cap >= 1]
+        if not tracks:
             raise SystemExit(f"no yard tracks found for depot {key}")
+        slots = [e for e, _ in tracks]
         for r, sids in dp["stations"].items():
             for sid in sids:
                 depot_station[(r, sid)] = key
@@ -147,13 +153,14 @@ def route_on_tracks(routes, stops, shapes, patterns, trips, calendars, lat0, ref
         if not keep:
             raise SystemExit(f"no depot yard track at {key} reachable from all its stations")
         slots = [slots[i] for i in keep]
+        caps = [tracks[i][1] for i in keep]
         ins = {s: [v[i] for i in keep] for s, v in ins.items()}
         outs = {s: [v[i] for i in keep] for s, v in outs.items()}
         depots[key] = {
             "name": dp["name"], "en": dp["en"], "stations": dp["stations"],
             "lat": round(sum(g.ll[s][0] for s in slots) / len(slots), 6),
             "lon": round(sum(g.ll[s][1] for s in slots) / len(slots), 6),
-            "slots": slots, "in": ins, "out": outs,
+            "slots": slots, "cap": caps, "pitch": dp["train"] + YARD_GAP, "end": YARD_END, "in": ins, "out": outs,
         }
 
     spots = net.stable_spots()
