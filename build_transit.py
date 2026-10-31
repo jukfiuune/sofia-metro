@@ -68,24 +68,53 @@ def simplify(xy, tol):
 
 
 def project_stops(xy, cum, stop_xy):
-    """Distance along the shape of each stop, in order, never going backwards."""
-    out, start = [], 0
+    """Distance along the shape of each stop, in order, never going backwards.
+
+    A route can pass close to a stop more than once (terminal loops, out-and-back
+    streets), so every close pass is a candidate and the in-order combination with
+    the smallest total distance error is chosen (dynamic programming)."""
+    NEAR, SEP = 60.0, 120.0
+    cands = []
     for sx, sy in stop_xy:
-        best, best_d, best_i = float("inf"), 0.0, start
-        for i in range(start, len(xy) - 1):
+        hits = []
+        for i in range(len(xy) - 1):
             (x1, y1), (x2, y2) = xy[i], xy[i + 1]
             dx, dy = x2 - x1, y2 - y1
             L2 = dx * dx + dy * dy
             t = 0.0 if L2 == 0 else max(0.0, min(1.0, ((sx - x1) * dx + (sy - y1) * dy) / L2))
-            px, py = x1 + dx * t, y1 + dy * t
-            e = math.hypot(sx - px, sy - py)
-            if e < best - 1e-6:
-                best, best_d, best_i = e, cum[i] + math.sqrt(L2) * t, i
-            # Once well past a good match, stop: the shape may come back near this stop later.
-            if best < 30 and cum[i] - best_d > 400:
-                break
-        out.append(round(best_d, 1))
-        start = best_i
+            hits.append((math.hypot(sx - x1 - dx * t, sy - y1 - dy * t), cum[i] + math.sqrt(L2) * t))
+        best = min(hits)
+        # Local best of each close pass: keep a hit unless a better one lies within SEP metres.
+        close = sorted(h for h in hits if h[0] <= max(NEAR, best[0] + 1))
+        keep = []
+        for e, d in close:
+            if all(abs(d - k[1]) > SEP for k in keep):
+                keep.append((e, d))
+        cands.append(sorted(keep, key=lambda h: h[1]) or [best])
+    # cost[j][k]: least total error placing stops 0..j with stop j at candidate k.
+    cost = [[e for e, _ in cands[0]]]
+    back = [[None] * len(cands[0])]
+    for j in range(1, len(cands)):
+        row, brow = [], []
+        for e, d in cands[j]:
+            prev = [(cost[j - 1][k], k) for k, (_, pd) in enumerate(cands[j - 1]) if pd <= d + 1e-6]
+            if prev:
+                c, k = min(prev)
+                row.append(c + e); brow.append(k)
+            else:
+                row.append(math.inf); brow.append(None)
+        if all(math.isinf(c) for c in row):           # no ordered placement: fall back to nearest
+            row = [cost[j - 1][min(range(len(cost[j - 1])), key=cost[j - 1].__getitem__)] + e for e, _ in cands[j]]
+            brow = [min(range(len(cost[j - 1])), key=cost[j - 1].__getitem__)] * len(cands[j])
+        cost.append(row); back.append(brow)
+    k = min(range(len(cost[-1])), key=cost[-1].__getitem__)
+    out = []
+    for j in range(len(cands) - 1, -1, -1):
+        out.append(round(cands[j][k][1], 1))
+        k = back[j][k] if back[j][k] is not None else 0
+    out.reverse()
+    for j in range(1, len(out)):                       # guarantee non-decreasing
+        out[j] = max(out[j], out[j - 1])
     return out
 
 
