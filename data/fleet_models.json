@@ -173,7 +173,7 @@
   },
   {
    "type": "tram",
-   "model": "T8K-503",
+   "model": "T8M-500F (rebuilt T8K-503)",
    "ranges": [
     [
      501,
@@ -192,11 +192,12 @@
    "propulsion": "electric",
    "years": "2010–2014 (rebuilt)",
    "spec_source": "https://transphoto.org/list.php?t=1&cid=396&serv=0",
-   "sections_estimated": true
+   "sections_estimated": true,
+   "source_note": "transphoto.org lists 501–511 as Т8М-500 F (2010–2014 rebuilds)"
   },
   {
    "type": "tram",
-   "model": "T8M-900",
+   "model": "T8M-900F",
    "ranges": [
     [
      901,
@@ -215,7 +216,8 @@
    "propulsion": "electric",
    "years": "2012–2014 (rebuilt from T8M-900M / T6M-700)",
    "spec_source": "https://transphoto.org/list.php?t=1&cid=396&serv=0",
-   "sections_estimated": true
+   "sections_estimated": true,
+   "source_note": "transphoto.org lists these as Т8М-900 F (2012–2014 rebuilds)"
   },
   {
    "type": "tram",

@@ -550,6 +550,12 @@
     const occ = occText(v.occupancy);
     if (occ) html += fact(t("occupancy"), `<span class="occ occ-${v.occupancy}"></span>${occ}`);
     html += modelFacts(v) + `</div>`;
+    const num = v.id.replace(/^\D+/, "");
+    const issue = "https://github.com/jukfiuune/sofia-metro/issues/new?" + new URLSearchParams({
+      title: `Wrong model: ${t("kind_" + v.kindBase)} ${num}`,
+      body: `Vehicle ${v.id} (line ${r ? r.name : v.routeId}) is shown as: ${v.model ? v.model.model : "unknown"}\n\nActual model / how you know:\n`,
+    });
+    html += `<p class="small muted report">${t("wrongModel")} <a href="${issue}" target="_blank" rel="noopener">${t("reportIt")}</a></p>`;
     if (r) html += `<div class="card-actions"><button class="btn" data-action="live-line" data-line="${v.routeId}">${t("line")} ${esc(r.name)}</button></div>`;
     if (p) {
       html += `<h4>${t("stopsOnRoute")}</h4><ol class="stoplist">`;

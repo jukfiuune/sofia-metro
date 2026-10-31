@@ -10,7 +10,7 @@ A live map of Sofia's public transport, inspired by [livetransport.eu](https://l
 - **Lines, stops and route shapes:** the official GTFS static feed (`https://gtfs.sofiatraffic.bg/api/v1/static`).
 - **Metro track layout:** OpenStreetMap (`railway=subway`), cached in `data/osm_tracks.json`.
 - **Base map:** OpenFreeMap vector tiles (OpenMapTiles schema) in our own muted style, drawn by MapLibre. Browsers without WebGL, and low-memory phones by default, get OpenStreetMap raster tiles.
-- **Vehicle models:** fleet-number ranges, model names and features (low floor, AC) come from the [livetransport.eu](https://livetransport.eu/sofia) vehicle list. Lengths, body sections, build years and coupling come from transphoto.org, fotobus.msk.ru and Wikipedia (`data/fleet_research.json`). Section splits are estimates.
+- **Vehicle models:** fleet-number ranges, model names and features (low floor, AC) come from the [livetransport.eu](https://livetransport.eu/sofia) vehicle list. Lengths, body sections, build years and coupling come from transphoto.org, fotobus.msk.ru and Wikipedia (`data/fleet_research.json`). Section splits are estimates. `tools/check_fleet.py` compares the result with the per-vehicle registers: on 31.10.2026, 388 of 394 vehicles in service matched, 4 were not in any register, and the 2 that differ (2602, 2605) appear there only as scrapped Chavdar buses that once had those numbers. Where ranges overlap, the narrowest wins. Vehicle cards have a "Wrong model?" link that opens a GitHub issue.
 
 ## Live buses, trams and trolleybuses
 
@@ -78,6 +78,7 @@ python3 build_transit.py              # lines, stops, shapes (latest GTFS)
 python3 build_data.py                 # metro (latest GTFS + cached OSM tracks)
 python3 build_data.py --refresh-osm   # also re-download OSM tracks (Overpass; can be slow)
 python3 tools/build_fleet.py          # js/fleet.js from data/fleet_models.json
+python3 tools/check_fleet.py          # compare models with transphoto / fotobus registers
 ```
 
 | File | Purpose |
@@ -87,5 +88,6 @@ python3 tools/build_fleet.py          # js/fleet.js from data/fleet_models.json
 | `js/live.js` | Realtime feed decoding, snapping, smooth motion, vehicle / stop / line cards |
 | `js/metro.js` | Metro simulation: runs, turnbacks, depots, train bodies |
 | `js/fleet.js` | Vehicle models by fleet number (generated) |
+| `tools/check_fleet.py` | Checks the model lookup against the per-vehicle registers of transphoto.org and fotobus.msk.ru for every fleet number in the live feed |
 | `build_transit.py` | Writes `data/transit.js` (lines, stops, stop patterns) and `data/shapes.js` (encoded route shapes) |
 | `build_data.py`, `tracks.py`, `network.py`, `runs.py` | Metro data: GTFS runs, OSM track graph, routing, speed profiles |

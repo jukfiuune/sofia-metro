@@ -168,6 +168,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
 .fact span { color: var(--muted); }
 .fact b { text-align: right; font-weight: 700; }
 .card-actions { display: flex; gap: 8px; margin: 0 0 12px; }
+.report { margin: -6px 0 12px; text-align: right; }
 #card-body h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 16px 0 8px; }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }

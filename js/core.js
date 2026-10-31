@@ -61,6 +61,7 @@
     aboutText: ["Автобуси, трамваи и тролейбуси: позиции на живо от официалния GTFS-realtime поток на {cgm}. Метро: изчислени позиции по официалното разписание (GTFS) и коловозите от {osm}. Модели на возилата: по инвентарни номера, по данни на {lt}, transphoto.org и Уикипедия. Неофициален проект.",
                 "Buses, trams and trolleybuses: live positions from the official GTFS-realtime feed of the {cgm}. Metro: positions estimated from the official timetable (GTFS) on track geometry from {osm}. Vehicle models: by fleet number, from {lt}, transphoto.org and Wikipedia. Unofficial project."],
     cgm: ["Центъра за градска мобилност", "Sofia Urban Mobility Center"],
+    wrongModel: ["Грешен модел?", "Wrong model?"], reportIt: ["Съобщете", "Report it"],
   };
   let lang = store.get("lang", "bg");
   function t(key, vars) {
