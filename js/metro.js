@@ -275,6 +275,32 @@
 
   const stationOf = stop => (D.stations[stop] && D.stations[stop].parent) || stop;
   const lineDepot = route => D.depots[Object.keys(D.depots).find(k => D.depots[k].stations[route])];
+  /** Natural duration of a move along P, including reversal stops. */
+  const moveTime = (P, speed) => (P.len - P.yl) / speed + P.yl / YARD_SPEED + P.rvd.length * REV_HOLD;
+  const nextDate = date => shiftDay({ year: +date.slice(0, 4), month: +date.slice(4, 6), day: +date.slice(6, 8) }, 1);
+
+  /** A pattern on one of `routes` from a depot station to `station`, for running empty
+   *  between the depot and a station where a train spends the night; -1 if none. */
+  function emptyRunTo(station, routes, ok) {
+    return D.patterns.findIndex((q, qi) => routes.includes(q.route) && depotFor(q.route, q.stops[0]) &&
+      stationOf(q.stops.at(-1)) === station && ok(qi));
+  }
+
+  /** The day's runs that start away from a depot: station -> their first trips. */
+  function outsideStarts(date) {
+    const first = new Map();
+    for (const trip of trips) {
+      if (!calendars[trip.cal].has(date)) continue;
+      const k = `${trip.p.route}/${trip.run}`, f = first.get(k);
+      if (!f || trip.start < f.start) first.set(k, trip);
+    }
+    const need = new Map();
+    for (const tr of first.values()) {
+      const st = stationOf(tr.p.stops[0]);
+      if (!depotFor(tr.p.route, tr.p.stops[0])) need.set(st, [...(need.get(st) || []), tr]);
+    }
+    return need;
+  }
 
   /** Play one service day out from the yard state at its start: gives every run its set
    *  and every depot stay its place; returns the vehicles (runs and spares) and the yard
@@ -351,10 +377,26 @@
 
     // Moves in and out of the yards, in time order (departures first at the same moment).
     const events = [];
+    for (const v of runs) { v.parks = []; v.startAt = v.endAt = undefined; v.set = null; }
+    // Runs starting the day away from a depot, in order of departure: the train waiting at
+    // their station, else one pulled out of the depot early that runs there empty.
+    const firstDep = v => v.trips[0].start + v.trips[0].p.dep[0];
+    for (const v of runs.filter(v => v.legs[0].kind !== "depot").sort((a, b) => firstDep(a) - firstDep(b))) {
+      const p = v.trips[0].p, pi = patternIdx.get(p), station = stationOf(p.stops[0]);
+      const o = fromStation(v, station);
+      if (o) { v.set = o.set; v.stable0 = o; continue; }
+      const qi = emptyRunTo(station, [v.route], qi => D.turns[`${qi}>${pi}`] != null);
+      const q = D.patterns[qi], depot = q && depotFor(q.route, q.stops[0]), outs = depot && D.depots[depot].out[q.s0];
+      if (outs) {
+        const pull = firstDep(v) - READY - moveTime(paths[D.turns[`${qi}>${pi}`]], SHUNT_SPEED) - q.P.len / DEPOT_SPEED - moveTime(paths[outs[0]], DEPOT_SPEED);
+        v.emptyFrom = { qi, depot };
+        events.push([pull, 0, v, -2]);
+        continue;
+      }
+      v.set = fromLoose(v);
+      if (!v.set) { const got = fromDepot(v, homeDepot(FLEET.find(f => f.lines.includes(v.route)))); if (got) v.set = got.e.set; }
+    }
     for (const v of runs) {
-      v.parks = []; v.startAt = v.endAt = undefined; v.set = null;
-      const first = v.legs[0];
-      if (first.kind !== "depot") events.push([DAY_START, -1, v, -1, first.t1]);
       v.stays.forEach((s, j) => {
         if (s.t0 > DAY_START) events.push([s.t0, 1, v, j]);
         if (s.t1 < DAY_END) events.push([s.t1, 0, v, j]);
@@ -364,11 +406,13 @@
     const endOutside = [];
     for (const [t, arrive, v, j] of events) {
       const s = v.stays[j];
-      if (j < 0) {                                  // starts the day stabled away from a depot
-        const o = fromStation(v, stationOf(v.trips[0].p.stops[0]));
-        if (o) { v.set = o.set; v.stable0 = o; continue; }
-        v.set = fromLoose(v);
-        if (!v.set) { const got = fromDepot(v, homeDepot(FLEET.find(f => f.lines.includes(v.route)))); if (got) v.set = got.e.set; }
+      if (j === -2) {                               // pulled out early to run empty to its first station
+        const got = fromDepot(v, v.emptyFrom.depot);
+        if (got) {
+          v.set = got.e.set;
+          v.deadhead = { ...v.emptyFrom, slot: got.t.i, k: got.e.k };
+          if (got.e.from) { got.e.from.endAt = got.e.arrived; v.startAt = got.e.arrived; }
+        } else v.set = fromLoose(v);
         continue;
       }
       if (!arrive) {
@@ -404,12 +448,48 @@
       const key = o.plat != null ? "p" + D.patterns[o.plat].P.n.at(-1) : o.spot;
       used.set(key, Math.max(used.get(key) || 0, o.k + 1));
     }
+    const arrival = v => v.trips.at(-1).start + v.trips.at(-1).p.arr.at(-1);
+    // Tomorrow's runs that start away from a depot need a train at their station. Where
+    // fewer end there tonight, the last trains bound for the depot run on empty to spend
+    // the night in that station's tail tracks, as far as they hold; the rest come out of
+    // the depot early tomorrow.
+    const at = new Map();                                   // station -> trains there tonight
+    for (const v of runs) {
+      const l = v.legs.at(-1);
+      if (v.set && (v.noDepotEnd || (l.kind === "hold" && l.parked))) {
+        const st = stationOf(v.trips.at(-1).p.stops.at(-1));
+        at.set(st, (at.get(st) || 0) + 1);
+      }
+    }
+    for (const o of stayed) at.set(o.station, (at.get(o.station) || 0) + 1);
+    const homeward = runs.filter(v => v.set && !v.endAt && !v.noDepotEnd && v.legs.at(-1).kind === "depot")
+      .sort((a, b) => arrival(b) - arrival(a));
+    for (const [station, firsts] of outsideStarts(nextDate(date))) {
+      let short = firsts.length - (at.get(station) || 0);
+      for (const v of homeward) {
+        if (short <= 0) break;
+        if (v.sendTo != null) continue;
+        const A = v.trips.at(-1).p, Ai = patternIdx.get(A), routes = firsts.map(t => t.p.route).filter(r => v.set.lines.includes(r));
+        const qi = emptyRunTo(station, routes, qi => stationOf(D.patterns[qi].stops[0]) === stationOf(A.stops.at(-1)) && D.turns[`${Ai}>${qi}`] != null);
+        if (qi < 0) continue;
+        // Room left in the station's tail tracks for this train.
+        const q = D.patterns[qi], dp = lineDepot(v.route), len = TRAIN_TYPES[v.set.type].length;
+        const room = (D.stable.in[q.s1] || []).reduce((a, i) => {
+          const r = (D.stable.room[paths[i].n.at(-1)] || 0) - dp.end - len;
+          return a + (r >= 0 ? Math.floor(r / dp.pitch) + 1 : 0);
+        }, 0);
+        if ((at.get(station) || 0) >= room) break;
+        for (const t of Object.values(yard).flat()) { const e = t.occ.find(e => e.from === v); if (e) take(t, e); }
+        v.sendTo = qi; v.noDepotEnd = true;
+        at.set(station, (at.get(station) || 0) + 1);
+        short--;
+      }
+    }
     // Trains ending the day away from a depot, in order of arrival: into the tail tracks
     // as far as each holds, then at the platform behind them.
-    const arrival = v => v.trips.at(-1).start + v.trips.at(-1).p.arr.at(-1);
     const evening = runs.filter(v => v.set && (v.noDepotEnd || (v.legs.at(-1).kind === "hold" && v.legs.at(-1).parked)));
     for (const v of evening.sort((a, b) => arrival(a) - arrival(b))) {
-      const A = v.trips.at(-1).p, dp = lineDepot(v.route), len = TRAIN_TYPES[v.set.type].length;
+      const A = v.sendTo != null ? D.patterns[v.sendTo] : v.trips.at(-1).p, dp = lineDepot(v.route), len = TRAIN_TYPES[v.set.type].length;
       let place = null;
       for (const i of D.stable.in[A.s1] || []) {
         const spot = paths[i].n.at(-1), k = used.get(spot) || 0;
@@ -503,7 +583,6 @@
     v.stays = [];
 
     /** Natural duration of a move along P, including reversal stops. */
-    const moveTime = (P, speed) => (P.len - P.yl) / speed + P.yl / YARD_SPEED + P.rvd.length * REV_HOLD;
 
     /** Add move legs along P (from distance `from` to `to`) between t0 and t1, stopping at reversal points. */
     function addMove(P, t0, t1, status, extra, from = 0, to = P.len) {
@@ -563,6 +642,17 @@
         const dt = moveTime(P, DEPOT_SPEED);
         parkedLeg(v.startAt ?? DAY_START, dep - READY - dt, depot, pk.slot, P, pk.c, nextInfo);
         addMove(P, dep - READY - dt, dep - READY, "leavingDepot", nextInfo, pk.c);
+      } else if (v.deadhead) {
+        // Pulled out of the depot early and run empty to the station its first trip leaves from.
+        const dh = v.deadhead, q = D.patterns[dh.qi], dp = D.depots[dh.depot];
+        const Po = paths[dp.out[q.s0][dh.slot]], Pt = paths[D.turns[`${dh.qi}>${patternIdx.get(p)}`]];
+        const tTurn = moveTime(Pt, SHUNT_SPEED), tRun = q.P.len / DEPOT_SPEED, tOut = moveTime(Po, DEPOT_SPEED);
+        const c = dp.end + dh.k * dp.pitch + (v.set ? TRAIN_TYPES[v.set.type].length : dp.pitch) / 2;
+        let t = dep - READY - tTurn - tRun - tOut;
+        push(v.startAt ?? DAY_START, t, { kind: "depot", depot: dh.depot, node: dp.slots[dh.slot], P: Po, d: c, ...nextInfo });
+        addMove(Po, t, t + tOut, "leavingDepot", nextInfo, c); t += tOut;
+        addMove(q.P, t, t + tRun, "emptyRun", nextInfo); t += tRun;
+        addMove(Pt, t, t + tTurn, "toPlatform", nextInfo);
       } else if (v.stable0 && v.stable0.plat != null) {
         // Spent the night at the platform it arrived at: over to the departure platform if that differs.
         const sb = v.stable0, A = D.patterns[sb.plat], Pt = paths[D.turns[`${sb.plat}>${patternIdx.get(p)}`]];
@@ -604,13 +694,22 @@
           addMove(P, ta + UNLOAD, ta + UNLOAD + dt, "toDepot", {}, 0, P.len - pk.c);
           parkedLeg(ta + UNLOAD + dt, v.endAt ?? DAY_END, depot, pk.slot, P, P.len - pk.c, {});
         } else {
+          let A = pA, t = ta + UNLOAD;
+          if (v.sendTo != null) {
+            // Runs on empty to spend the night at a station where a run starts tomorrow.
+            const q = D.patterns[v.sendTo], Pt = paths[D.turns[`${patternIdx.get(pA)}>${v.sendTo}`]];
+            const dTurn = moveTime(Pt, SHUNT_SPEED), dRun = q.P.len / DEPOT_SPEED;
+            addMove(Pt, t, t + dTurn, "toStabling", {}); t += dTurn;
+            addMove(q.P, t, t + dRun, "toStabling", {}); t += dRun;
+            A = q;
+          }
           // Away from a depot: into a tail track or siding, or stays at the platform.
-          const sb = v.stable1, i = sb ? sb.tail : (D.stable.in[pA.s1] || [])[0];
-          if (i == null) push(ta + UNLOAD, DAY_END, { ...arrived, d: behind(pA.P, sb ? sb.k : 0), parked: true, status: "stabled" });
+          const sb = v.stable1, i = sb ? sb.tail : (D.stable.in[A.s1] || [])[0];
+          if (i == null) push(t, DAY_END, { kind: "hold", P: A.P, d: behind(A.P, sb ? sb.k : 0), stop: A.stops.at(-1), parked: true, status: "stabled" });
           else {
             const P = paths[i], dt = moveTime(P, SHUNT_SPEED), d = Math.max(0, P.len - stableAt(sb ? sb.k : 0));
-            addMove(P, ta + UNLOAD, ta + UNLOAD + dt, "toSiding", {}, 0, d);
-            push(ta + UNLOAD + dt, DAY_END, { kind: "hold", P, d, parked: true, status: "stabled", stop: endStop });
+            addMove(P, t, t + dt, "toSiding", {}, 0, d);
+            push(t + dt, DAY_END, { kind: "hold", P, d, parked: true, status: "stabled", stop: A.stops.at(-1) });
           }
         }
         break;
@@ -705,6 +804,8 @@
     leavingDepot: ["Излиза от депото", "Leaving depot"], toPlatform: ["Отива към перона", "Moving to platform"],
     readyFirst: ["Готов за първи курс", "Ready for first trip"], terminating: ["Краен курс — слизане на пътници", "Terminating — passengers leaving"],
     toDepot: ["Прибира се в депото", "Returning to depot"], toSiding: ["Отива към коловоза за нощуване", "Running to stabling siding"],
+    toStabling: ["Празен курс към гарата за нощуване", "Running empty to its overnight station"],
+    emptyRun: ["Празен курс към първата си гара", "Running empty to its first station"],
     waiting: ["Изчаква заминаване", "Waiting to depart"], arrived: ["Пристигна — слизане на пътници", "Arrived — passengers leaving"],
     reversing: ["Обръща през задния коловоз", "Reversing via tail track"], shunting: ["Маневра", "Shunting"],
     parkedIn: ["Паркиран в {d}", "Parked in {d}"], inService: ["В движение", "In service"],
@@ -1131,7 +1232,7 @@
           // Line colour all day, except on the way to a depot or siding to rest (white) and resting there (grey).
           const cls = st.kind === "trip" ? (st.tp.atStop >= 0 ? "at-stop" : "") :
             (st.kind === "depot" || st.leg.parked) ? "parked" :
-            (st.leg.status === "toDepot" || st.leg.status === "toSiding") ? "nonservice" : "";
+            (st.leg.status === "toDepot" || st.leg.status === "toSiding" || st.leg.status === "toStabling") ? "nonservice" : "";
           if (cls !== tm.cls) {
             tm.vehEl.classList.remove("at-stop", "parked", "nonservice");
             if (cls) tm.vehEl.classList.add(cls);
