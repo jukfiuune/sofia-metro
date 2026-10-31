@@ -6,6 +6,7 @@ Parsing the feed takes ~20 s, so the result is cached per (feed, date).
 """
 import csv
 import hashlib
+import json
 import io
 import math
 import pickle
@@ -87,7 +88,9 @@ def _read(zf, name):
 def load_day(zip_path, date):
     """date: 'YYYYMMDD'. Returns a dict with routes, stops, shapes, trips, blocks."""
     zip_path = Path(zip_path)
-    key = hashlib.sha256(f"{zip_path.resolve()}|{zip_path.stat().st_size}|{date}|v2".encode()).hexdigest()[:16]
+    mf = ROOT / "data" / "osm_shapes.json"
+    mstamp = int(mf.stat().st_mtime) if mf.exists() else 0
+    key = hashlib.sha256(f"{zip_path.resolve()}|{zip_path.stat().st_size}|{date}|{mstamp}|v3".encode()).hexdigest()[:16]
     CACHE.mkdir(parents=True, exist_ok=True)
     cache = CACHE / f"day-{date}-{key}.pickle"
     if cache.exists():
@@ -112,6 +115,12 @@ def load_day(zip_path, date):
         if p["shape_id"] in shape_ids:
             pts[p["shape_id"]].append((int(p["shape_pt_sequence"]), float(p["shape_pt_lat"]), float(p["shape_pt_lon"])))
     shapes = {sid: Shape([(la, lo) for _, la, lo in sorted(v)]) for sid, v in pts.items() if len(v) > 1}
+    # Prefer the shapes map-matched onto OSM (tools/match_shapes.py), as the app does.
+    matched_file = ROOT / "data" / "osm_shapes.json"
+    if matched_file.exists():
+        for sid, mp in json.loads(matched_file.read_text(encoding="utf-8")).items():
+            if sid in shapes and len(mp) > 1:
+                shapes[sid] = Shape([tuple(p) for p in mp])
 
     # Stop positions along each shape, computed once per (shape, stop list).
     placed = {}

@@ -30,6 +30,8 @@
     return { shape: p.sh, stops, d: p.d || tp.d, t: p.t, g: p.g, route: tp ? tp.r : null, head: tp ? tp.h : "" };
   });
   const depots = S.depots.map((d, i) => ({ ...d, i, xy: xy(d.lat, d.lon), kind: Object.keys(d.kinds).sort((a, b) => d.kinds[b] - d.kinds[a])[0] }));
+  // Battery buses on trolleybus-numbered lines belong to Столичен електротранспорт and use
+  // its trolleybus depots (Искър, Надежда), which is what matching by line type gives.
   const factorAt = (str, hour) => {
     if (!str) return null;
     for (let k = 0; k < 24; k++) {                        // nearest hour with data

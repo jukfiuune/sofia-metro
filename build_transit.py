@@ -73,7 +73,7 @@ def project_stops(xy, cum, stop_xy):
     A route can pass close to a stop more than once (terminal loops, out-and-back
     streets), so every close pass is a candidate and the in-order combination with
     the smallest total distance error is chosen (dynamic programming)."""
-    NEAR, SEP = 60.0, 120.0
+    NEAR, SEP = 80.0, 30.0
     cands = []
     for sx, sy in stop_xy:
         hits = []
@@ -169,6 +169,14 @@ def main():
     for p in read_csv(zf, "shapes.txt"):
         if p["shape_id"] in by_shape:
             shape_pts[p["shape_id"]].append((int(p["shape_pt_sequence"]), float(p["shape_pt_lat"]), float(p["shape_pt_lon"])))
+    # Shapes map-matched onto OSM roads / tram tracks (tools/match_shapes.py) replace
+    # GTFS's own geometry, so lines and vehicles sit on the streets the map draws.
+    matched_file = ROOT / "data" / "osm_shapes.json"
+    matched = json.loads(matched_file.read_text(encoding="utf-8")) if matched_file.exists() else {}
+    for sid, pts in matched.items():
+        if sid in shape_pts:
+            shape_pts[sid] = [(i, la, lo) for i, (la, lo) in enumerate(pts)]
+    print(f"{sum(1 for s in matched if s in shape_pts)} of {len(shape_pts)} shapes use OSM-matched geometry")
 
     stop_ids, stop_index = [], {}
     def sidx(sid):

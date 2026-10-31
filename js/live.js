@@ -527,7 +527,7 @@
     const parked = ST.sim.parkedAt(d.i, ST.clock.now());
     const byRoute = new Map();
     for (const v of parked) byRoute.set(v.route, (byRoute.get(v.route) || 0) + 1);
-    let html = `<div class="card-head"><span class="kind-badge">${ST.kindIcon(d.kind, 22)}</span><div><div class="card-title">${t("depot")}</div>` +
+    let html = `<div class="card-head"><span class="kind-badge">${ST.kindIcon(d.kind, 22)}</span><div><div class="card-title">${d.name ? esc(d.name) : t("depot")}</div>` +
       `<div class="card-sub">${t("kinds_" + d.kind)} · ${t("parkedN", { n: parked.length })} · ${t("simulated")}</div></div></div>`;
     html += `<div class="chips-row">${[...byRoute].sort((a, b) => b[1] - a[1]).map(([r, n]) => `${chip(r)}<span class="muted small">×${n}</span>`).join(" ")}</div>`;
     return html + `<p class="small muted">${t("depotNote")}</p>`;

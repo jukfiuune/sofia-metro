@@ -52,11 +52,39 @@ def hours_string(by_hour, encode):
     return "".join(encode(by_hour[str(h)]) if str(h) in by_hour else MISSING for h in range(24))
 
 
+def osm_depots(folder):
+    """Depots mapped in OpenStreetMap (tools/fetch_osm_roads.py): Столичен
+    електротранспорт's tram and trolleybus depots, the bus garages, and Zemlyane bus
+    garage, which OSM only shows as Столичен автотранспорт's charging stations."""
+    out, chargers = [], []
+    for f in ("depots.json", "busdepots.json"):
+        p = folder / f
+        if not p.exists():
+            continue
+        for e in json.loads(p.read_text(encoding="utf-8"))["elements"]:
+            t, c = e.get("tags", {}), e.get("center") or {"lat": e.get("lat"), "lon": e.get("lon")}
+            name, op = t.get("name", ""), t.get("operator", "")
+            if t.get("amenity") == "charging_station" and "автотранспорт" in op:
+                chargers.append((c["lat"], c["lon"]))
+                continue
+            if e["type"] == "relation" or t.get("landuse") not in ("industrial", "depot"):
+                continue
+            kind = ("tram" if "Трамвайно" in name or t.get("railway:depot") == "tram" or t.get("depot") == "tram"
+                    else "trolley" if "Тролейбусно" in name or t.get("depot") == "trolleybus"
+                    else "bus" if "Автобусен гараж" in name and ("автотранспорт" in op) or "МТК" in op else None)
+            if kind:
+                out.append({"lat": round(c["lat"], 5), "lon": round(c["lon"], 5), "kinds": {kind: 1}, "name": name or op})
+    if chargers:
+        out.append({"lat": round(sum(a for a, _ in chargers) / len(chargers), 5), "lon": round(sum(b for _, b in chargers) / len(chargers), 5),
+                    "kinds": {"bus": 1}, "name": "Автобусен гараж „Земляне“"})
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--gtfs", required=True)
     ap.add_argument("--profiles", required=True)
-    ap.add_argument("--depots", required=True)
+    ap.add_argument("--depots", required=True, help='analysis/out/depots.json, or "osm" for the depots mapped in OpenStreetMap')
     ap.add_argument("--label", default="", help="where the profiles come from, shown in the app")
     ap.add_argument("--out", default=str(ROOT / "data" / "sim.js"))
     args = ap.parse_args()
@@ -105,6 +133,11 @@ def main():
         enc = lambda v: level(v[0] / free - 1, 0.05)
         seg_prof[key] = [round(free, 1)] + [hours_string(p.get(dtp, {}), enc) for dtp in ("wd", "sat", "sun")]
     profiles, prof_index = [], {}
+    pair_best = {}                                # stop pair -> its profile key with the most runs
+    for key, p in prof["segments"].items():
+        pair = key.split("|")[0]
+        if pair not in pair_best or p["n"] > prof["segments"][pair_best[pair]]["n"]:
+            pair_best[pair] = key
 
     # Shapes for stop placement of patterns whose stops differ from transit.js.
     shapes = defaultdict(list)
@@ -141,7 +174,13 @@ def main():
                 d = project_stops(xy, cum, [to_xy(*(stop_xy.get(s) or extra[s][:2])) for s in stops])
             segs = []
             for i in range(1, len(stops)):
-                k = f"{stops[i - 1]}>{stops[i]}|{round((d[i] - d[i - 1]) / 25) * 25}"
+                L = round((d[i] - d[i - 1]) / 25) * 25
+                pair = f"{stops[i - 1]}>{stops[i]}"
+                # Profiles are keyed by stop pair and path length; geometry changes (e.g.
+                # OSM-matched shapes) shift lengths a little, so nearby lengths count too.
+                k = next((f"{pair}|{L + dl}" for dl in (0, 25, -25, 50, -50, 75, -75) if f"{pair}|{L + dl}" in seg_prof), None)
+                if k is None and pair in pair_best:
+                    k = pair_best[pair]
                 if k in seg_prof:
                     if k not in prof_index:
                         prof_index[k] = len(profiles)
@@ -169,8 +208,9 @@ def main():
         if stop in stop_index:
             dwell[stop_index[stop]] = [hours_string(by.get(dtp, {}), lambda v: level(v, 2)) for dtp in ("wd", "sat", "sun")]
 
-    depots = [{"lat": d["lat"], "lon": d["lon"], "kinds": d["kinds"], "vehicles": d["vehicles"]}
-              for d in json.loads(Path(args.depots).read_text(encoding="utf-8"))]
+    depots = osm_depots(ROOT / "data" / "osm") if args.depots == "osm" else [
+        {"lat": d["lat"], "lon": d["lon"], "kinds": d["kinds"], "vehicles": d["vehicles"]}
+        for d in json.loads(Path(args.depots).read_text(encoding="utf-8"))]
 
     data = {
         "built": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

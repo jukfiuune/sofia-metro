@@ -65,6 +65,18 @@ A live map of Sofia's public transport, inspired by [livetransport.eu](https://l
 - **Running locally:** `recorder/install.sh` installs a frozen copy of the script as a systemd user service (`sofia-recorder`), which restarts after crashes and on boot. Editing the project or switching branches doesn't affect the running copy; run `install.sh` again to update it. For it to run without a logged-in session: `sudo loginctl enable-linger $USER`.
 - **Logs:** `journalctl --user -u sofia-recorder`.
 
+## Routes on OSM roads (planner branch)
+
+GTFS route shapes are drawn by the transit authority and often run beside the real street, cut corners or skip loops. `tools/match_shapes.py` map-matches every shape onto OpenStreetMap, so lines, vehicles and bodies sit on the streets the map draws.
+
+- **Data:** `tools/fetch_osm_roads.py` downloads roads (with one-way rules and bus or trolleybus exemptions), tram tracks, depots and route relations for Sofia and its suburbs. It fetches in tiles over several Overpass mirrors and resumes after interruptions.
+- **Matching:** the matcher is a hidden Markov model. Buses and trolleybuses use roads in their legal direction; trams use tram tracks.
+- **Route relations:** where a line has an OSM route relation (495 of 517 shapes), its ways are preferred. Relations are often more detailed than GTFS (exact lanes, tracks, loops) but can be out of date, so the GTFS shape still decides where the line goes.
+- **Clean-up:** back-and-forth spikes from starting on the wrong lane are removed. A match is rejected, keeping the GTFS shape, if less than 85% of the route matched or its length differs by more than 15%.
+- **Result:** 516 of 517 shapes are on OSM geometry. Every matched shape stays within 45 m of its GTFS original, and 10,740 of 10,743 trip stops are within 40 m of their placed point.
+- **Where it's used:** `build_transit.py` and the analysis loader use `data/osm_shapes.json` when it exists.
+- **Depots:** they come from OSM: Столичен електротранспорт's tram depots (Искър, Банишора, Красна поляна, Клокотница) and trolleybus depots (Искър, Левски, Надежда), the Малашевци and Дружба bus garages, МТК's garage, and Земляне, located from its e-bus chargers. Build the simulation with `--depots osm`.
+
 ## Simulation (planner branch)
 
 At any time other than "Now", or at any speed-up, buses, trams and trolleybuses are simulated instead of shown live. The metro is simulated as before.
