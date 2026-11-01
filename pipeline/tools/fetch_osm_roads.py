@@ -7,7 +7,7 @@ Public Overpass servers are often slow, so the area is fetched in tiles, one at
 a time, with retries over several mirrors; each tile is saved as soon as it
 arrives (data/osm/), so an interrupted download resumes where it stopped.
 
-    python3 tools/fetch_osm_roads.py
+    python3 pipeline/tools/fetch_osm_roads.py
 """
 import json
 import sys
@@ -16,7 +16,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "data" / "osm"
 MIRRORS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter",
            "https://overpass.kumi.systems/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"]

@@ -13,7 +13,7 @@ trolleybuses at any date and time.
 Stop indices refer to data/transit.js (build_transit.py), which must be built
 from the same feed.
 
-    python3 tools/build_sim.py --gtfs recordings/gtfs/<file>.zip \
+    python3 pipeline/tools/build_sim.py --gtfs recordings/gtfs/<file>.zip \
         --profiles analysis/out/profiles.json --depots analysis/out/depots.json [--label "fake week"]
 """
 import argparse
@@ -27,8 +27,8 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "pipeline"))
 from build_transit import KINDS, project_stops  # noqa: E402
 
 MISSING = "!"

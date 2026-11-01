@@ -11,7 +11,7 @@ Needs pyosmium; use the project's virtual environment:
 
     python3 -m venv .venv && .venv/bin/pip install osmium
     curl -L -o data/osm/bulgaria-latest.osm.pbf https://download.geofabrik.de/europe/bulgaria-latest.osm.pbf
-    .venv/bin/python tools/extract_osm.py [data/osm/bulgaria-latest.osm.pbf]
+    .venv/bin/python pipeline/tools/extract_osm.py [data/osm/bulgaria-latest.osm.pbf]
 """
 import json
 import re
@@ -20,7 +20,7 @@ from pathlib import Path
 
 import osmium
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "data" / "osm"
 # Sofia with the villages its suburban lines reach (fetch_osm_roads.py's city tiles and outer strips).
 SOUTH, WEST, NORTH, EAST = 42.47, 23.06, 42.87, 23.62

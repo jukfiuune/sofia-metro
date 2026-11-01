@@ -18,7 +18,7 @@ A shape is kept as GTFS drew it when the match is doubtful (length off by more
 than MAX_LEN_DIFF or less than MIN_MATCHED of it matched). Output:
 data/osm_shapes.json {shape_id: [[lat, lon], ...]} and a report.
 
-    python3 tools/match_shapes.py [--shapes A4231 TM5 ...]
+    python3 pipeline/tools/match_shapes.py [--shapes A4231 TM5 ...]
 """
 import argparse
 import heapq
@@ -31,7 +31,7 @@ import io
 from collections import defaultdict
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 OSM = ROOT / "data" / "osm"
 OUT = ROOT / "data" / "osm_shapes.json"
 LAT0, LON0 = 42.69, 23.32

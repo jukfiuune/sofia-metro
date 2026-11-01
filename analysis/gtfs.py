@@ -16,7 +16,7 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "pipeline"))
 from build_transit import project_stops  # noqa: E402
 
 KINDS = {"0": "tram", "3": "bus", "11": "trolley"}

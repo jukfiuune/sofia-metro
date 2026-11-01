@@ -8,9 +8,9 @@ Track geometry (platform tracks, crossovers, tail tracks, depot yards) comes
 from OpenStreetMap; trains are routed over it (see tracks.py / network.py).
 
 Usage:
-    python3 build_data.py                       # download the feed and build
-    python3 build_data.py path/to/gtfs.zip
-    python3 build_data.py --refresh-osm [...]   # also re-download OSM tracks
+    python3 pipeline/build_data.py                       # download the feed and build
+    python3 pipeline/build_data.py path/to/gtfs.zip
+    python3 pipeline/build_data.py --refresh-osm [...]   # also re-download OSM tracks
 """
 import csv
 import io
@@ -28,8 +28,9 @@ from tracks import build_graph, display_offsets, extend_missing, fetch_osm
 
 FEED_URL = "https://gtfs.sofiatraffic.bg/api/v1/static"
 METRO_ROUTES = ("M1", "M2", "M3", "M4")
-OUT = Path(__file__).resolve().parent / "data" / "metro.js"
-OSM_CACHE = Path(__file__).resolve().parent / "data" / "osm_tracks.json"
+ROOT = Path(__file__).resolve().parent.parent
+OUT = ROOT / "data" / "metro.js"
+OSM_CACHE = ROOT / "data" / "osm_tracks.json"
 YARD_END = 4.0      # m kept clear before a stabling track's buffer stop
 YARD_GAP = 8.0      # m between trains parked one behind the other
 

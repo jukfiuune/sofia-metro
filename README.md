@@ -10,7 +10,7 @@ A live map of Sofia's public transport, inspired by [livetransport.eu](https://l
 - **Lines, stops and route shapes:** the official GTFS static feed (`https://gtfs.sofiatraffic.bg/api/v1/static`).
 - **Metro track layout:** OpenStreetMap (`railway=subway`), cached in `data/osm_tracks.json`.
 - **Base map:** OpenFreeMap vector tiles (OpenMapTiles schema) in our own muted style, drawn by MapLibre. Browsers without WebGL, and low-memory phones by default, get OpenStreetMap raster tiles.
-- **Vehicle models:** fleet-number ranges, model names and features (low floor, AC) come from the [livetransport.eu](https://livetransport.eu/sofia) vehicle list. Lengths, body sections, build years and coupling come from transphoto.org, fotobus.msk.ru and Wikipedia (`data/fleet_research.json`). Section splits are estimates. `tools/check_fleet.py` compares the result with the per-vehicle registers: on 31.10.2026, 388 of 394 vehicles in service matched, 4 were not in any register, and the 2 that differ (2602, 2605) appear there only as scrapped Chavdar buses that once had those numbers. Where ranges overlap, the narrowest wins. Vehicle cards have a "Wrong model?" link that opens a GitHub issue.
+- **Vehicle models:** fleet-number ranges, model names and features (low floor, AC) come from the [livetransport.eu](https://livetransport.eu/sofia) vehicle list. Lengths, body sections, build years and coupling come from transphoto.org, fotobus.msk.ru and Wikipedia (`data/fleet_research.json`). Section splits are estimates. `pipeline/tools/check_fleet.py` compares the result with the per-vehicle registers: on 31.10.2026, 388 of 394 vehicles in service matched, 4 were not in any register, and the 2 that differ (2602, 2605) appear there only as scrapped Chavdar buses that once had those numbers. Where ranges overlap, the narrowest wins. Vehicle cards have a "Wrong model?" link that opens a GitHub issue.
 
 ## Live buses, trams and trolleybuses
 
@@ -34,7 +34,7 @@ A live map of Sofia's public transport, inspired by [livetransport.eu](https://l
   - **Turnbacks** are routed with exactly one reversal. Where tracks continue past the terminus with a crossover (Slivnitsa, Obelya, Vitosha, Gorna Banya, Vazov), the train runs into the tail, reverses and pulls into the other platform. Where they don't (Airport, Business Park), it crosses over before the station and reverses at the platform.
   - **Depot moves:** runs that start or end at Slivnitsa or Obelya use the Obelya depot. Runs at Ovcha Kupel or Tsar Boris III use the Zemlyane depot. A midday break of more than 25 minutes at those stations also means a trip to the depot and back. Trains park on real yard tracks.
   - **Overnight stabling:** runs that start or end elsewhere stable on the nearest siding or tail track, for example the dead-end siding at Konstantin Velichkov.
-- **Speeds between stations** (`runs.py`): each run accelerates, then cruises or coasts and re-powers below the local speed limit, then brakes into the platform. The run is fitted to take exactly the scheduled time.
+- **Speeds between stations** (`pipeline/runs.py`): each run accelerates, then cruises or coasts and re-powers below the local speed limit, then brakes into the platform. The run is fitted to take exactly the scheduled time.
   - **Speed limits:** OSM `maxspeed` tags (20–80 km/h on M1, M2 and M4), curve radius (all lines; M3 has no speed tags), 40 km/h on crossovers, and the 80 km/h system maximum (Wikipedia, and the Siemens Inspiro spec sheet).
   - **Train performance:** about 1.0 m/s² acceleration and braking. Wikipedia gives 1.3 and 1.1 m/s² for the 81-740 "Rusich" trains; nothing was found for the Inspiro or Skoda trains.
   - **Dwell:** 25 s at a stop, shortened down to 8 s where the timetable is too tight.
@@ -67,22 +67,22 @@ A live map of Sofia's public transport, inspired by [livetransport.eu](https://l
 
 ## Routes on OSM roads (planner branch)
 
-GTFS route shapes are drawn by the transit authority and often run beside the real street, cut corners or skip loops. `tools/match_shapes.py` map-matches every shape onto OpenStreetMap, so lines, vehicles and bodies sit on the streets the map draws.
+GTFS route shapes are drawn by the transit authority and often run beside the real street, cut corners or skip loops. `pipeline/tools/match_shapes.py` map-matches every shape onto OpenStreetMap, so lines, vehicles and bodies sit on the streets the map draws.
 
-- **Data:** `tools/extract_osm.py` cuts roads (with one-way rules and bus or trolleybus exemptions), tram tracks, footpaths and crossings, depots and route relations for Sofia and its suburbs out of Geofabrik's Bulgaria extract (about 170 MB, a few minutes to download, a minute to read). It needs pyosmium in a virtual environment:
+- **Data:** `pipeline/tools/extract_osm.py` cuts roads (with one-way rules and bus or trolleybus exemptions), tram tracks, footpaths and crossings, depots and route relations for Sofia and its suburbs out of Geofabrik's Bulgaria extract (about 170 MB, a few minutes to download, a minute to read). It needs pyosmium in a virtual environment:
 
   ```
   python3 -m venv .venv && .venv/bin/pip install osmium
   curl -L -o data/osm/bulgaria-latest.osm.pbf https://download.geofabrik.de/europe/bulgaria-latest.osm.pbf
-  .venv/bin/python tools/extract_osm.py
+  .venv/bin/python pipeline/tools/extract_osm.py
   ```
 
-  `tools/fetch_osm_roads.py` fetches the same data from Overpass instead, in tiles over several mirrors. It's slower, and the public servers often fail under load.
+  `pipeline/tools/fetch_osm_roads.py` fetches the same data from Overpass instead, in tiles over several mirrors. It's slower, and the public servers often fail under load.
 - **Matching:** the matcher is a hidden Markov model. Buses and trolleybuses use roads in their legal direction; trams use tram tracks.
 - **Route relations:** where a line has an OSM route relation (495 of 517 shapes), its ways are preferred. Relations are often more detailed than GTFS (exact lanes, tracks, loops) but can be out of date, so the GTFS shape still decides where the line goes.
 - **Clean-up:** back-and-forth spikes from starting on the wrong lane are removed. A match is rejected, keeping the GTFS shape, if less than 85% of the route matched or its length differs by more than 15%.
 - **Result:** 516 of 517 shapes are on OSM geometry. Every matched shape stays within 45 m of its GTFS original, and 10,740 of 10,743 trip stops are within 40 m of their placed point.
-- **Where it's used:** `build_transit.py` and the analysis loader use `data/osm_shapes.json` when it exists.
+- **Where it's used:** `pipeline/build_transit.py` and the analysis loader use `data/osm_shapes.json` when it exists.
 - **Depots:** they come from OSM: Столичен електротранспорт's tram depots (Искър, Банишора, Красна поляна, Клокотница) and trolleybus depots (Искър, Левски, Надежда), the Малашевци and Дружба bus garages, МТК's garage, and Земляне, located from its e-bus chargers. Build the simulation with `--depots osm`.
 
 ## Trip planner (planner branch)
@@ -91,7 +91,7 @@ The route button on the left rail plans door-to-door trips by foot, bus, tram, t
 
 - **Places:** start and destination can be a stop or metro station (by name or code), your location, or a point picked on the map. The A and B pins can be dragged.
 - **When:** leave now, or at any date and time. "Now" in real time uses where live vehicles actually are. Any other time uses the simulation's predicted times, and the metro timetable.
-- **Walking:** it follows the real pedestrian network from OSM (`data/walk.js`, built by `tools/build_walk.py`, about 2.6 MB compressed and loaded when the planner opens):
+- **Walking:** it follows the real pedestrian network from OSM (`data/walk.js`, built by `pipeline/tools/build_walk.py`, about 2.6 MB compressed and loaded when the planner opens):
   - **Main roads have two sides.** Trunk, primary and secondary roads, and wide or one-way tertiary roads, are split into a pavement on each side. Walking along the road keeps to one side, and stops snap to the side they are on.
   - **Crossings:** people cross at traffic lights (counted as a 25 s wait) and pedestrian crossings. Pavements mapped as separate footways replace walking beside the road.
   - **Metro stations** are reached through their nearest mapped entrance (284 entrances over all 50 stations), plus 2 minutes to the platform.
@@ -114,7 +114,7 @@ At any time other than "Now", or at any speed-up, buses, trams and trolleybuses 
   - **Vehicle:** state, next stop with predicted time and delay, and the predicted time at every stop.
   - **Stop:** predicted departures with expected lateness.
   - **Depot:** parked vehicles by line.
-- **Data:** `data/sim.js` (about 375 KB compressed) is loaded only on first use. It holds the timetable for every date in the feed, plus the travel-time profiles and depots. Build it with `python3 tools/build_sim.py --gtfs ... --profiles analysis/out/profiles.json --depots analysis/out/depots.json --label "..."`.
+- **Data:** `data/sim.js` (about 375 KB compressed) is loaded only on first use. It holds the timetable for every date in the feed, plus the travel-time profiles and depots. Build it with `python3 pipeline/tools/build_sim.py --gtfs ... --profiles analysis/out/profiles.json --depots analysis/out/depots.json --label "..."`.
 - **Current data:** for now the profiles and depots come from the fake week, so the app labels them "fake week, test data". Real profiles replace them once the server has recorded enough.
 - **Speed:** about 750 simulated vehicles at the morning peak take about 0.4 ms per frame to compute.
 
@@ -178,28 +178,28 @@ python3 analysis/validate.py --fake recordings-fake --profiles analysis/out/fake
 ## Run
 
 ```bash
-python3 -m http.server 8765
+python3 -m http.server 8765 --directory web
 ```
 
-Then open http://localhost:8765. Any static host works; the live site is served by GitHub Pages from the `main` branch.
+Then open http://localhost:8765. `web/data` is a symlink to the generated `data/` folder, so a deploy has to copy it in (or follow symlinks). Any static host works; the live site is served by GitHub Pages from the `main` branch.
 
 ## Update the data
 
 ```bash
-python3 build_transit.py              # lines, stops, shapes (latest GTFS)
-python3 build_data.py                 # metro (latest GTFS + cached OSM tracks)
-python3 build_data.py --refresh-osm   # also re-download OSM tracks (Overpass; can be slow)
-python3 tools/build_fleet.py          # js/fleet.js from data/fleet_models.json
-python3 tools/check_fleet.py          # compare models with transphoto / fotobus registers
+python3 pipeline/build_transit.py             # lines, stops, shapes (latest GTFS)
+python3 pipeline/build_data.py                # metro (latest GTFS + cached OSM tracks)
+python3 pipeline/build_data.py --refresh-osm  # also re-download OSM tracks (Overpass; can be slow)
+python3 pipeline/tools/build_fleet.py         # web/js/fleet.js from data/fleet_models.json
+python3 pipeline/tools/check_fleet.py         # compare models with transphoto / fotobus registers
 ```
 
 | File | Purpose |
 |---|---|
-| `js/core.js` | Language, clock, map, panels, card, search, filters, frame loop |
-| `js/basemap.js` | Vector map style (OpenFreeMap) with raster fallback |
-| `js/live.js` | Realtime feed decoding, snapping, smooth motion, vehicle / stop / line cards |
-| `js/metro.js` | Metro simulation: runs, turnbacks, depots, train bodies |
-| `js/fleet.js` | Vehicle models by fleet number (generated) |
-| `tools/check_fleet.py` | Checks the model lookup against the per-vehicle registers of transphoto.org and fotobus.msk.ru for every fleet number in the live feed |
-| `build_transit.py` | Writes `data/transit.js` (lines, stops, stop patterns) and `data/shapes.js` (encoded route shapes) |
-| `build_data.py`, `tracks.py`, `network.py`, `runs.py` | Metro data: GTFS runs, OSM track graph, routing, speed profiles |
+| `web/js/core.js` | Language, clock, map, panels, card, search, filters, frame loop |
+| `web/js/basemap.js` | Vector map style (OpenFreeMap) with raster fallback |
+| `web/js/live.js` | Realtime feed decoding, snapping, smooth motion, vehicle / stop / line cards |
+| `web/js/metro.js` | Metro simulation: runs, turnbacks, depots, train bodies |
+| `web/js/fleet.js` | Vehicle models by fleet number (generated) |
+| `pipeline/tools/check_fleet.py` | Checks the model lookup against the per-vehicle registers of transphoto.org and fotobus.msk.ru for every fleet number in the live feed |
+| `pipeline/build_transit.py` | Writes `data/transit.js` (lines, stops, stop patterns) and `data/shapes.js` (encoded route shapes) |
+| `pipeline/build_data.py`, `pipeline/tracks.py`, `pipeline/network.py`, `pipeline/runs.py` | Metro data: GTFS runs, OSM track graph, routing, speed profiles |

@@ -8,8 +8,8 @@ A realtime trip_id is "<route>-<shape>-<run>-<seq>-<service>", so a vehicle's
 shape (and with it its stop pattern and destination) is known from its trip_id.
 
 Usage:
-    python3 build_transit.py                 # download the feed and build
-    python3 build_transit.py path/to/gtfs.zip
+    python3 pipeline/build_transit.py                 # download the feed and build
+    python3 pipeline/build_transit.py path/to/gtfs.zip
 """
 import io
 import json
@@ -23,7 +23,7 @@ from pathlib import Path
 
 from build_data import FEED_URL, read_csv
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "data" / "transit.js"
 OUT_SHAPES = ROOT / "data" / "shapes.js"
 KINDS = {"0": "tram", "3": "bus", "11": "trolley"}

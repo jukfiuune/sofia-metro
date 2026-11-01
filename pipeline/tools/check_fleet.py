@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Cross-check js/fleet.js model ranges against per-vehicle registers.
+"""Cross-check web/js/fleet.js model ranges against per-vehicle registers.
 
 Downloads the Sofia lists of transphoto.org (trams, trolleybuses, electric buses)
 and fotobus.msk.ru (buses), samples the live GTFS-realtime feed for the fleet
 numbers in service, and prints every vehicle whose model differs from our lookup.
 
-    python3 tools/check_fleet.py [--samples 6]
+    python3 pipeline/tools/check_fleet.py [--samples 6]
 """
 import collections, html, json, re, sys, time, urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 SOURCES = {
     "tram": "https://transphoto.org/list.php?t=1&cid=396&serv=0",
     "trolley": "https://transphoto.org/list.php?t=2&cid=396&serv=0",
@@ -91,7 +91,7 @@ def live_ids(samples):
 
 def main():
     samples = int(sys.argv[sys.argv.index("--samples") + 1]) if "--samples" in sys.argv else 3
-    js = (ROOT / "js" / "fleet.js").read_text(encoding="utf-8")
+    js = (ROOT / "web" / "js" / "fleet.js").read_text(encoding="utf-8")
     models = json.loads(re.search(r"const MODELS = (\[.*?\]);", js, re.S).group(1))
     order = {"tram": ["tram", "trolley", "bus"], "trolley": ["trolley", "bus", "tram"], "bus": ["bus", "trolley", "tram"]}
 

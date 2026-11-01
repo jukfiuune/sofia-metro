@@ -15,7 +15,7 @@ corners of a node and is one of:
 Pavements mapped as separate footways replace walking along the road on that side.
 Chains of nodes with two edges are merged into one edge with its shape kept.
 
-    python3 tools/build_walk.py
+    python3 pipeline/tools/build_walk.py
 """
 import glob
 import json
@@ -24,7 +24,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 OSM = ROOT / "data" / "osm"
 LAT0, LON0 = 42.69, 23.32
 KX, KY = 111320 * math.cos(math.radians(LAT0)), 111320.0
