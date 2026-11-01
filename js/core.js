@@ -23,7 +23,7 @@
     vehicleTypes: ["Видове транспорт", "Vehicle types"], lines: ["Линии", "Lines"],
     resetFilter: ["Покажи всички", "Show all"], mapStyle: ["Стил на картата", "Map style"],
     styleVector: ["Векторна", "Vector"], styleOsm: ["OpenStreetMap", "OpenStreetMap"],
-    styleNoWebgl: ["Браузърът няма WebGL — показва се OpenStreetMap.", "Your browser has no WebGL, so OpenStreetMap tiles are shown."],
+    styleNoWebgl: ["Браузърът няма WebGL, затова се показва OpenStreetMap.", "Your browser has no WebGL, so OpenStreetMap tiles are shown."],
     theme: ["Тема", "Theme"], themeAuto: ["Авто", "Auto"], themeLight: ["Светла", "Light"], themeDark: ["Тъмна", "Dark"],
     display: ["Показване", "Display"], showBodies: ["Превозни средства в цял ръст", "Full-length vehicles"],
     showStops: ["Спирки (при приближаване)", "Stops (when zoomed in)"],
@@ -66,8 +66,8 @@
     duty: ["курс", "duty"], state: ["Състояние", "State"], depot: ["Депо", "Depot"], parkedN: ["{n} паркирани", "{n} parked"],
     depotNote: ["Местоположението е открито от записите; паркираните возила са по симулацията.", "Location found from recordings; parked vehicles are from the simulation."],
     simNote: ["Симулирано по типични времена за пътуване ({src}).", "Simulated from typical travel times ({src})."],
-    nextTrips: ["Следващи курсове", "Next trips"], gpsLost: ["Няма GPS сигнал от {m} мин — позицията е прогноза.", "No GPS for {m} min — the position is a forecast."],
-    untrackedNote: ["Няма GPS данни за този курс — показан е по разписание.", "No GPS for this duty — shown from the timetable."],
+    nextTrips: ["Следващи курсове", "Next trips"], gpsLost: ["Няма GPS сигнал от {m} мин - позицията е прогноза.", "No GPS for {m} min - the position is a forecast."],
+    untrackedNote: ["Няма GPS данни за този курс - показан е по разписание.", "No GPS for this duty - shown from the timetable."],
     forecastNote: ["прогноза от симулацията (няма официална прогноза)", "forecast from the simulation (no official prediction)"],
     showUntracked: ["Курсове без GPS (по разписание)", "Duties without GPS (from the timetable)"],
     st_moving: ["В движение", "In service"], st_stop: ["На спирка", "At a stop"], st_ready: ["Готов за тръгване", "Ready to depart"],
@@ -306,13 +306,15 @@
     emit("filter");
     invalidate();
   }
-  const kindIcon = (kind, size = 20) => `<span class="kind-icon k-${kind}" style="--s:${size}px">${KIND_SVG[kind]}</span>`;
-  const KIND_SVG = {
-    metro: '<svg viewBox="0 0 24 24"><path d="M5 19 9 5l3 8 3-8 4 14"/></svg>',
-    tram: '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/><path d="M9 3h6M12 3v3M9 21l1-3M15 21l-1-3M6 12h12"/></svg>',
-    trolley: '<svg viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="10" rx="2.5"/><path d="M9 8 13 2M12 8l4-6M5 13h14M8 21v-3M16 21v-3"/></svg>',
-    bus: '<svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="14" rx="2.5"/><path d="M5 11h14M8 21v-3M16 21v-3"/></svg>',
-    night: '<svg viewBox="0 0 24 24"><path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z"/></svg>',
+  // Icons come from Material Symbols (index.html loads the ones used); the metro keeps its letter M.
+  const icon = (name, cls = "") => `<span class="ms${cls ? " " + cls : ""}" aria-hidden="true">${name}</span>`;
+  const kindIcon = (kind, size = 20) => `<span class="kind-icon k-${kind}" style="--s:${size}px">${KIND_ICON[kind]}</span>`;
+  const KIND_ICON = {
+    metro: '<span class="kind-letter">M</span>',
+    tram: icon("tram"),
+    trolley: icon("directions_bus"),
+    bus: icon("directions_bus"),
+    night: icon("bedtime"),
   };
   const lineChip = (l, extra = "") => `<span class="line-chip k-${l.kind}" style="--c:${l.color};--t:${l.text}"${extra}>${l.name}</span>`;
 
@@ -502,7 +504,7 @@
       statusClock.textContent = [p.hour, p.minute, p.second].map(v => String(v).padStart(2, "0")).join(":");
       document.getElementById("status").classList.toggle("simulated", !clock.isRealtime());
       if (!statusText.textContent || statusText.dataset.auto) {
-        statusText.textContent = clock.isRealtime() ? "" : `${t("simulated")} · ${clock.speed}×`;
+        statusText.textContent = clock.isRealtime() ? "" : `${t("simulated")}, ${clock.speed}×`;
         statusText.dataset.auto = clock.isRealtime() ? "" : "1";
       }
       renderCard(false);
@@ -525,7 +527,7 @@
     map, metresPerPixel, invalidate, on, emit,
     addLayer(layer) { layers.push(layer); },
     openCard, closeCard, get card() { return card; }, renderCard, focus,
-    addSearch(fn) { providers.push(fn); }, norm, matchScore,
+    addSearch(fn) { providers.push(fn); }, norm, matchScore, icon,
     KINDS, KIND_COLORS, kindIcon, lineChip, filters, routeVisible, setFilter,
     registerLines(list) { lineRegistry.push(...list); renderFilter(); },
     lineInfo: id => lineRegistry.find(l => l.id === id),

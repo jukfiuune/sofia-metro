@@ -160,7 +160,7 @@
       if (s === "vector") {
         layer = L.maplibreGL({
           style: buildStyle(opts.theme, opts.lang), interactive: false,
-          attribution: attribution + ' · <a href="https://openfreemap.org">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/">OpenMapTiles</a>',
+          attribution: attribution + ' | <a href="https://openfreemap.org">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/">OpenMapTiles</a>',
         });
       } else {
         layer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, className: "base-tiles", attribution });

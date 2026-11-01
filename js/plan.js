@@ -27,19 +27,19 @@
   const rail = document.getElementById("rail");
   const btn = document.createElement("button");
   btn.className = "rail-btn"; btn.dataset.panel = "plan"; btn.dataset.i18nTitle = "plan";
-  btn.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8.5 18H15a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h6.5"/></svg>';
+  btn.innerHTML = ST.icon("route");
   rail.insertBefore(btn, rail.children[1]);
   btn.addEventListener("click", () => ST.showPanel(document.getElementById("panel-plan").hidden ? "plan" : null));
   const panel = document.createElement("section");
   panel.className = "panel"; panel.id = "panel-plan"; panel.hidden = true;
   panel.innerHTML = `
-    <div class="panel-head"><h2 data-i18n="plan"></h2><button class="icon-btn panel-close" aria-label="Close">✕</button></div>
+    <div class="panel-head"><h2 data-i18n="plan"></h2><button class="icon-btn panel-close" aria-label="Close">${ST.icon("close")}</button></div>
     <div class="panel-body" id="plan-body">
       <div id="plan-form">
         <div class="plan-ends">
           <div class="plan-end"><span class="pin a">A</span><input type="search" id="plan-from" autocomplete="off" data-i18n-placeholder="fromPh"></div>
           <div class="plan-end"><span class="pin b">B</span><input type="search" id="plan-to" autocomplete="off" data-i18n-placeholder="toPh"></div>
-          <button class="icon-btn" id="plan-swap" data-i18n-title="swap">⇅</button>
+          <button class="icon-btn" id="plan-swap" data-i18n-title="swap">${ST.icon("swap_vert")}</button>
         </div>
         <div id="plan-suggest" class="list plan-suggest" hidden></div>
         <div class="seg" id="plan-when"><button data-when="now" data-i18n="leaveNow"></button><button data-when="at" data-i18n="departAt"></button></div>
@@ -73,8 +73,8 @@
     stopSim: ["Спри симулацията", "Stop simulation"], destination: ["Пристигане", "Arrive"],
     crossings: ["пресичания: {n}", "crossings: {n}"], predicted: ["по прогноза", "predicted"],
     youAreHere: ["Вие", "You"],
-    changeTo: ["Прекачване на {l} — {p}", "Change to {l} at {p}"], throughStation: ["през станцията", "inside the station"],
-    missed: ["Превозното средство е изпуснато — търся нов маршрут", "Missed the vehicle — finding a new trip"],
+    changeTo: ["Прекачване на {l} на {p}", "Change to {l} at {p}"], throughStation: ["през станцията", "inside the station"],
+    missed: ["Превозното средство е изпуснато, търся нов маршрут", "Missed the vehicle, finding a new trip"],
     newTrip: ["Нов маршрут", "New trip"],
   });
   panel.querySelector(".panel-close").addEventListener("click", () => ST.showPanel(null));
@@ -130,8 +130,8 @@
 
   function placeResults(q) {
     const out = [];
-    out.push({ label: t("myLocation"), icon: "◎", act: w => locate(w) });
-    out.push({ label: t("pickOnMap"), icon: "⌖", act: w => { picking = w; document.body.classList.add("plan-picking"); ST.toast(t("pickHint")); if (window.matchMedia("(max-width: 700px)").matches) ST.showPanel(null); } });
+    out.push({ label: t("myLocation"), icon: ST.icon("my_location"), act: w => locate(w) });
+    out.push({ label: t("pickOnMap"), icon: ST.icon("pin_drop"), act: w => { picking = w; document.body.classList.add("plan-picking"); ST.toast(t("pickHint")); if (window.matchMedia("(max-width: 700px)").matches) ST.showPanel(null); } });
     if (q.length < 2) return out;
     const X = ST.transit, seen = new Map();
     for (const st of metroStations()) {
@@ -761,9 +761,10 @@
   }
   function summary(j) {
     const chips = j.legs.map(l => l.type === "ride" ? ST.lineChip(lineOf(l))
-      : l.change ? '<span class="plan-walk">⇄</span>' : `<span class="plan-walk">🚶${mins(l.t1 - l.t0)}</span>`).join('<span class="plan-sep">›</span>');
+      : l.change ? `<span class="plan-walk">${ST.icon("transfer_within_a_station")}</span>`
+      : `<span class="plan-walk">${ST.icon("directions_walk")}${mins(l.t1 - l.t0)}</span>`).join(ST.icon("chevron_right", "plan-sep"));
     const flags = [j.needsRun ? `<span class="plan-flag run">${t("needsRun")}</span>` : "", j.jaywalk ? `<span class="plan-flag jay">${t("hasJaywalk")}</span>` : ""].join("");
-    return `<div class="plan-times"><b>${fmt(j.depart)} – ${fmt(j.arrive)}</b><span>${mins(j.arrive - j.depart)} ${t("min")}</span></div>
+    return `<div class="plan-times"><b>${fmt(j.depart)} - ${fmt(j.arrive)}</b><span>${mins(j.arrive - j.depart)} ${t("min")}</span></div>
       <div class="plan-chips">${chips}</div>
       <div class="plan-meta">${j.walkOnly ? t("walkOnly") : j.transfers === 1 ? t("transfer1") : j.transfers ? t("transfersN", { n: j.transfers }) : t("noTransfer")}${flags}</div>`;
   }
@@ -792,8 +793,8 @@
       if (l.change) {
         const nx = j.legs[k + 1], line = nx && nx.type === "ride" ? lineOf(nx) : null;
         steps.push(`<div class="plan-step walk" data-plan="leg" data-k="${k}"><span class="plan-time">${fmt(l.t0)}</span>
-          <span class="plan-ico">⇄</span><span class="grow"><b>${esc(t("changeTo", { l: line ? line.name : "", p: placeLabel(l.to) }))}</b>
-          <span class="plan-sub">${t("throughStation")} · ${mins(l.t1 - l.t0)} ${t("min")}</span></span></div>`);
+          <span class="plan-ico">${ST.icon("transfer_within_a_station")}</span><span class="grow"><b>${esc(t("changeTo", { l: line ? line.name : "", p: placeLabel(l.to) }))}</b>
+          <span class="plan-sub">${t("throughStation")}, ${mins(l.t1 - l.t0)} ${t("min")}</span></span></div>`);
         return;
       }
       if (l.type === "walk") {
@@ -801,21 +802,21 @@
         const cr = l.path.cross.signal + l.path.cross.marked + l.path.cross.jaywalk;
         const sub = [`${Math.round(l.path.len / 10) * 10} m`, `${mins(l.t1 - l.t0)} ${t("min")}`, cr ? t("crossings", { n: cr }) : "",
           l.path.cross.jaywalk ? `<span class="plan-flag jay">${t("hasJaywalk")}</span>` : "",
-          l.run ? `<span class="plan-flag run">${t("runPart", { d: l.run })}</span>` : ""].filter(Boolean).join(" · ");
+          l.run ? `<span class="plan-flag run">${t("runPart", { d: l.run })}</span>` : ""].filter(Boolean).join(", ");
         steps.push(`<div class="plan-step walk${l.run ? " running" : ""}" data-plan="leg" data-k="${k}"><span class="plan-time">${fmt(l.t0)}</span>
-          <span class="plan-ico">${l.run ? "🏃" : "🚶"}</span><span class="grow"><b>${esc(t(l.run ? "runTo" : "walkTo", { p: to }))}</b><span class="plan-sub">${sub}</span></span></div>`);
+          <span class="plan-ico">${ST.icon(l.run ? "directions_run" : "directions_walk")}</span><span class="grow"><b>${esc(t(l.run ? "runTo" : "walkTo", { p: to }))}</b><span class="plan-sub">${sub}</span></span></div>`);
         const next = j.legs[k + 1];
-        if (next && next.t0 - BOARD - l.t1 > 90) steps.push(`<div class="plan-step wait"><span class="plan-time"></span><span class="plan-ico">⏱</span><span class="grow plan-sub">${t("waitN", { m: mins(next.t0 - l.t1) })}</span></div>`);
+        if (next && next.t0 - BOARD - l.t1 > 90) steps.push(`<div class="plan-step wait"><span class="plan-time"></span><span class="plan-ico">${ST.icon("schedule")}</span><span class="grow plan-sub">${t("waitN", { m: mins(next.t0 - l.t1) })}</span></div>`);
       } else {
         const tr = tripOf(l), line = lineOf(l);
         steps.push(`<div class="plan-step ride" data-plan="leg" data-k="${k}" style="--c:${line.color}"><span class="plan-time">${fmt(l.t0)}</span>
           <span class="plan-ico">${ST.lineChip(line)}</span><span class="grow"><b>${esc(placeLabel(l.from))}</b>
-          <span class="plan-sub">${t("toward")} ${esc(headOf(l))} · ${t("stopsN", { n: l.i1 - l.i0 })}${tr.kind !== "metro" ? ` · ${t(tr.live ? "realtime" : "predicted")}` : ""}</span>
+          <span class="plan-sub">${t("toward")} ${esc(headOf(l))}, ${t("stopsN", { n: l.i1 - l.i0 })}${tr.kind !== "metro" ? `, ${t(tr.live ? "realtime" : "predicted")}` : ""}</span>
           <span class="plan-off">${fmt(l.t1)} ${esc(placeLabel(l.to))}</span></span></div>`);
       }
     });
     steps.push(`<div class="plan-step end"><span class="plan-time">${fmt(j.arrive)}</span><span class="plan-ico"><span class="pin b">B</span></span><span class="grow"><b>${esc(ends.b.label)}</b></span></div>`);
-    resultsEl.innerHTML = `<div class="plan-detail-head"><button class="btn" data-plan="back">‹ ${t("back")}</button>
+    resultsEl.innerHTML = `<div class="plan-detail-head"><button class="btn" data-plan="back">${ST.icon("arrow_back")}${t("back")}</button>
       <button class="btn primary" data-plan="sim" id="plan-sim-btn">${t(simActive ? "stopSim" : "simulate")}</button></div>
       <div class="plan-trip static">${summary(j)}</div><div class="plan-steps">${steps.join("")}</div>`;
     draw(j);

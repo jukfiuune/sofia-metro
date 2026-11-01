@@ -1,8 +1,8 @@
-/* Sofia Metro — estimated train positions from the official GTFS timetable.
+/* Sofia Metro - estimated train positions from the official GTFS timetable.
  *
  * Trips are chained into vehicle runs (the run number in each trip_id), so each
- * physical train is followed through its whole day. Every movement — trips,
- * turnbacks at termini, depot runs, overnight stabling — follows a path routed
+ * physical train is followed through its whole day. Every movement - trips,
+ * turnbacks at termini, depot runs, overnight stabling - follows a path routed
  * over the real track layout from OpenStreetMap (see build_data.py), so trains
  * use the actual platforms, crossovers, tail tracks and yard roads. Timings of
  * non-revenue moves are estimates.
@@ -201,9 +201,9 @@
   const TRAIN_TYPES = {
     // `year`: roughly when the type entered (or, modernised, re-entered) service.
     rusich:  { name: "81-740.2/741.2 „Русич“", maker: "Metrovagonmash", cars: [28.15, 27.2, 28.15], sections: 2, year: 2010 },
-    nomK:    { name: "81-717.4К/714.4К (modernised)", maker: "Metrovagonmash, modernised 2019–22", cars: [19.21, 19.21, 19.21, 19.21], sections: 1, year: 2021 },
+    nomK:    { name: "81-717.4К/714.4К (modernised)", maker: "Metrovagonmash, modernised 2019-22", cars: [19.21, 19.21, 19.21, 19.21], sections: 1, year: 2021 },
     nom:     { name: "81-717.4/714.4 (original, 1990)", maker: "Metrovagonmash", cars: [19.21, 19.21, 19.21, 19.21], sections: 1, year: 1990 },
-    skoda:   { name: "Škoda 21Mt/22Mt/23Mt", maker: "Škoda Group, 2025–26", cars: [20, 20, 20, 20], sections: 1, year: 2025 },
+    skoda:   { name: "Škoda 21Mt/22Mt/23Mt", maker: "Škoda Group, 2025-26", cars: [20, 20, 20, 20], sections: 1, year: 2025 },
     inspiro: { name: "Siemens Inspiro Sofia", maker: "Siemens / Newag", cars: [20, 20, 20], sections: 1, year: 2020 },
   };
   for (const t of Object.values(TRAIN_TYPES)) t.length = t.cars.reduce((a, b) => a + b, 0);
@@ -1146,11 +1146,11 @@
   const MT = {
     changingEnds: ["Смяна на кабината", "Changing ends"], stabled: ["Нощува на {s}", "Stabled overnight at {s}"],
     leavingDepot: ["Излиза от депото", "Leaving depot"], toPlatform: ["Отива към перона", "Moving to platform"],
-    readyFirst: ["Готов за първи курс", "Ready for first trip"], terminating: ["Краен курс — слизане на пътници", "Terminating — passengers leaving"],
+    readyFirst: ["Готов за първи курс", "Ready for first trip"], terminating: ["Краен курс - слизане на пътници", "Terminating - passengers leaving"],
     toDepot: ["Прибира се в депото", "Returning to depot"], toSiding: ["Отива към коловоза за нощуване", "Running to stabling siding"],
     toStabling: ["Празен курс към гарата за нощуване", "Running empty to its overnight station"],
     emptyRun: ["Празен курс към първата си гара", "Running empty to its first station"],
-    waiting: ["Изчаква заминаване", "Waiting to depart"], arrived: ["Пристигна — слизане на пътници", "Arrived — passengers leaving"],
+    waiting: ["Изчаква заминаване", "Waiting to depart"], arrived: ["Пристигна - слизане на пътници", "Arrived - passengers leaving"],
     reversing: ["Обръща през задния коловоз", "Reversing via tail track"], shunting: ["Маневра", "Shunting"],
     parkedIn: ["Паркиран в {d}", "Parked in {d}"], inService: ["В движение", "In service"],
     notInService: ["Извън движение", "Not in service"], run: ["курс", "run"], estimated: ["изчислено по разписание", "estimated from the timetable"],
@@ -1160,7 +1160,7 @@
     carsSections: ["{n} вагона × {k} секции", "{n} cars × {k} sections"],
     crossesOver: ["Преминава на другия коловоз преди {s}", "Crosses over to the departure track before {s}"],
     nextTrip: ["Следващ курс", "Next trip"], departs: ["Тръгва", "Departs"], doneForDay: ["Приключи за деня", "Finished for the day"],
-    spare: ["резерв", "spare"], spareToday: ["Няма — резерв днес", "None — spare today"],
+    spare: ["резерв", "spare"], spareToday: ["Няма - резерв днес", "None - spare today"],
     trainsParked: ["{n} влака в депото", "{n} trains parked"], noneParked: ["Няма паркирани влакове", "No trains parked here now"],
     out: ["излиза {t}", "out {t}"], noDeps: ["Няма заминавания в следващите 45 мин.", "No scheduled departures in the next 45 min."],
     schedDeps: ["Заминавания по разписание", "Scheduled departures"], trainsRunning: ["{n} влака в движение", "{n} trains running"],
@@ -1306,7 +1306,7 @@
     const dp = D.depots[key];
     const list = lastParked.filter(x => x.st.leg.depot === key);
     let html = `<div class="card-head"><span class="kind-badge">${ST.kindIcon("metro", 22)}</span><div><div class="card-title">${ST.lang === "bg" ? dp.name : dp.en}</div>` +
-      `<div class="card-sub">${mt("depot")} · ${mt("trainsParked", { n: list.length })}</div></div></div>`;
+      `<div class="card-sub">${mt("depot")}, ${mt("trainsParked", { n: list.length })}</div></div></div>`;
     if (!list.length) return html + `<p class="muted">${mt("noneParked")}</p>`;
     const next = x => x.st.leg.nextTrip ? x.st.leg.nextTrip.start : 1e9;
     list.sort((a, b) => next(a) - next(b));
@@ -1343,13 +1343,13 @@
   function stationCard(g) {
     const list = stationDepartures(g);
     let html = `<div class="card-head"><span class="kind-badge">${ST.kindIcon("metro", 22)}</span><div><div class="card-title">${esc(stName(g.ids[0]))}</div>` +
-      `<div class="card-sub">${t("station")} · ${[...g.lines].sort().map(chip).join(" ")}</div></div></div>`;
+      `<div class="card-sub">${t("station")}, ${[...g.lines].sort().map(chip).join(" ")}</div></div></div>`;
     html += `<h4>${mt("schedDeps")}</h4>`;
     if (!list.length) return html + `<p class="muted">${mt("noDeps")}</p>`;
     html += `<div class="rows">`;
     for (const r of list) {
       r.times.sort((a, b) => a.t - b.t);
-      const next = r.times.slice(0, 3).map(x => { const m = Math.round(x.wait / 60); return m <= 0 ? t("nowShort") : `${m} ${t("min")}`; }).join(" · ");
+      const next = r.times.slice(0, 3).map(x => { const m = Math.round(x.wait / 60); return m <= 0 ? t("nowShort") : `${m} ${t("min")}`; }).join(", ");
       html += `<div class="row-item">${chip(r.route)}<span class="grow">${esc(headName(r.head))}</span><span class="t">${next}</span></div>`;
     }
     return html + "</div>";
@@ -1362,7 +1362,7 @@
   function trainFacts(v) {
     const ty = TRAIN_TYPES[v.set.type];
     const cars = ty.sections > 1 ? mt("carsSections", { n: ty.cars.length, k: ty.sections }) : mt("cars", { n: ty.cars.length });
-    return fact(t("model"), esc(ty.name)) + fact(t("fleetNo"), esc(v.set.id)) + fact(t("length"), `${ty.length.toFixed(1)} m · ${cars}`);
+    return fact(t("model"), esc(ty.name)) + fact(t("fleetNo"), esc(v.set.id)) + fact(t("length"), `${ty.length.toFixed(1)} m, ${cars}`);
   }
 
   function stopList(p, trip, current) {
@@ -1383,10 +1383,10 @@
     if (st.kind === "trip") {
       const trip = leg.trip, p = trip.p, tp = st.tp, tt = st.t;
       html = `<div class="card-head">${chip(r)}<div><div class="card-title">${t("toward")} ${esc(headName(p.headsign))}</div>` +
-        `<div class="card-sub">${mt("inService")} · ${mt("run")} ${v.run} · ${mt("estimated")}</div></div></div><div class="facts">`;
+        `<div class="card-sub">${mt("inService")}, ${mt("run")} ${v.run}, ${mt("estimated")}</div></div></div><div class="facts">`;
       if (tp.atStop >= 0) html += fact(tp.atStop === 0 ? mt("departing") : mt("atStation"), esc(stName(p.stops[tp.atStop])));
       else {
-        html += fact(mt("next"), `${esc(stName(p.stops[tp.next]))} · ${minsText(p.arr[tp.next] - tt)}`);
+        html += fact(mt("next"), `${esc(stName(p.stops[tp.next]))}, ${minsText(p.arr[tp.next] - tt)}`);
         html += fact(t("speed"), `≈ ${Math.round(tp.v * 3.6)} ${t("kmh")}`);
       }
       html += trainFacts(v) + `</div>`;
@@ -1396,13 +1396,13 @@
       const status = st.kind === "depot" ? mt("parkedIn", { d: ST.lang === "bg" ? D.depots[leg.depot].name : D.depots[leg.depot].en })
         : mt(leg.status, { s: leg.stop ? stName(leg.stop) : "" });
       html = `<div class="card-head">${chip(r)}<div><div class="card-title">${esc(status)}</div>` +
-        `<div class="card-sub">${mt("notInService")} · ${v.spare ? mt("spare") : `${mt("run")} ${v.run}`} · ${mt("simulatedMove")}</div></div></div><div class="facts">`;
+        `<div class="card-sub">${mt("notInService")}, ${v.spare ? mt("spare") : `${mt("run")} ${v.run}`}, ${mt("simulatedMove")}</div></div></div><div class="facts">`;
       if (leg.stop && leg.status !== "stabled") html += fact(mt("atStation"), esc(stName(leg.stop)));
       const n = leg.nextTrip;
       if (n) {
         const dep = n.start + n.p.dep[0];
         html += fact(mt("nextTrip"), `${t("toward")} ${esc(headName(n.p.headsign))}`);
-        html += fact(mt("departs"), `${esc(stName(n.p.stops[0]))} ${hhmm(dep)} · ${minsText(dep - sec)}`);
+        html += fact(mt("departs"), `${esc(stName(n.p.stops[0]))} ${hhmm(dep)}, ${minsText(dep - sec)}`);
       } else html += fact(mt("nextTrip"), mt(v.spare ? "spareToday" : "doneForDay"));
       html += trainFacts(v) + `</div>`;
     }
@@ -1440,14 +1440,14 @@
       const name = D.routes[r].name.toLowerCase();
       if (name === q || name.replace("m", "") === q || ("метро " + name.replace("m", "")).startsWith(q) || ("m" + q) === name) {
         out.push({ score: 100, icon: chip(r), label: `${mt("metroLine")} ${D.routes[r].name}`,
-          sub: [...new Set(D.patterns.filter(p => p.route === r).map(p => headName(p.headsign)))].slice(0, 2).join(" ⇄ "),
+          sub: [...new Set(D.patterns.filter(p => p.route === r).map(p => headName(p.headsign)))].slice(0, 2).join(" - "),
           action: () => ST.openCard({ id: "line:" + r, render: () => lineCard(r) }) });
       }
     }
     for (const g of stationGroups) {
       const hit = [0, 40, 52, 60][Math.max(ST.matchScore(q, stBg(g.ids[0])), ST.matchScore(q, stEn(g.ids[0])))];
       if (hit && q.length >= 2) out.push({ score: hit + 5, icon: ST.kindIcon("metro", 22), label: esc(stName(g.ids[0])),
-        sub: `${t("station")} · ${[...g.lines].sort().map(chip).join(" ")}`,
+        sub: `${t("station")}, ${[...g.lines].sort().map(chip).join(" ")}`,
         action: () => { openStation(g); ST.focus([g.lat, g.lon], 15); } });
     }
     void raw;

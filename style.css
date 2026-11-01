@@ -61,7 +61,16 @@ a { color: var(--accent); }
 }
 .rail-btn:hover { background: var(--hover); }
 .rail-btn.active { background: var(--accent); color: var(--accent-fg); }
-.rail-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* Material Symbols icons (index.html loads only the ones used) */
+.ms {
+  font-family: "Material Symbols Rounded"; font-weight: 500; font-style: normal; font-size: 20px; line-height: 1;
+  letter-spacing: normal; text-transform: none; display: inline-block; white-space: nowrap; direction: ltr;
+  font-feature-settings: "liga"; -webkit-font-smoothing: antialiased; font-variation-settings: "FILL" 1, "opsz" 24;
+  vertical-align: middle; flex: none; user-select: none;
+}
+.rail-btn .ms { font-size: 24px; }
+.icon-btn { display: inline-grid; place-items: center; }
+.btn .ms { font-size: 18px; margin: -2px 4px 0 -2px; }
 .rail-dot { position: absolute; top: 7px; right: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); border: 2px solid var(--surface); }
 
 /* ---------- Status chip ---------- */
@@ -140,7 +149,8 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
 
 /* Kind icons and line chips */
 .kind-icon { --s: 20px; width: var(--s); height: var(--s); border-radius: 6px; display: inline-grid; place-items: center; color: #fff; flex: none; }
-.kind-icon svg { width: 74%; height: 74%; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.kind-icon .ms { font-size: calc(var(--s) * 0.8); }
+.kind-letter { font: 800 calc(var(--s) * 0.72)/1 var(--font-cond); }
 .kind-icon.k-metro { background: var(--metro); } .kind-icon.k-tram { background: var(--tram); }
 .kind-icon.k-trolley { background: var(--trolley); } .kind-icon.k-bus { background: var(--bus); }
 .kind-icon.k-night { background: #1d1f23; }
@@ -288,7 +298,7 @@ summary { cursor: pointer; padding: 10px 2px; font-weight: 700; }
 .plan-pin { background: none; border: 0; }
 .plan-pin .pin { width: 26px; height: 26px; font-size: 13px; }
 .plan-suggest { max-height: 40vh; margin: 0 -10px 8px; padding: 0; border-bottom: 1px solid var(--border); }
-.plan-sicon { width: 22px; text-align: center; flex: none; color: var(--muted); font-size: 18px; }
+.plan-sicon { width: 22px; text-align: center; flex: none; color: var(--muted); }
 .plan-go { width: 100%; margin-top: 8px; }
 body.plan-picking #map { cursor: crosshair; }
 .plan-trip { display: block; width: 100%; text-align: left; border: 1px solid var(--border); background: var(--surface); border-radius: 12px; padding: 10px 12px; margin: 8px 0; cursor: pointer; color: var(--fg); font: inherit; }
@@ -300,8 +310,9 @@ body.plan-picking #map { cursor: crosshair; }
 .plan-times span { color: var(--muted); font-weight: 600; }
 .plan-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 6px 0 4px; }
 .plan-chips .line-chip { height: 22px; min-width: 30px; font-size: 13px; }
-.plan-walk { font-size: 13px; color: var(--muted); font-weight: 600; }
-.plan-sep { color: var(--muted); font-size: 12px; }
+.plan-walk { font-size: 13px; color: var(--muted); font-weight: 600; display: inline-flex; align-items: center; }
+.plan-walk .ms { font-size: 18px; }
+.ms.plan-sep { color: var(--muted); font-size: 16px; }
 .plan-meta { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .plan-flag { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 6px; padding: 1px 6px; }
 .plan-flag.run { background: #fde4d4; color: #a33c00; }
@@ -318,7 +329,9 @@ body.plan-picking #map { cursor: crosshair; }
 .plan-step.walk.running { border-left-color: #e8590c; }
 .plan-step.now { background: var(--hover); box-shadow: inset 3px 0 0 var(--accent); }
 .plan-time { width: 42px; flex: none; font-weight: 700; font-variant-numeric: tabular-nums; }
-.plan-ico { width: 40px; flex: none; text-align: center; }
+.plan-ico { width: 40px; flex: none; text-align: center; color: var(--muted); }
+.plan-ico .ms { font-size: 22px; }
+.plan-step.walk.running .plan-ico { color: #e8590c; }
 .plan-ico .line-chip { min-width: 34px; }
 .plan-step .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .plan-sub { font-size: 13px; color: var(--muted); }

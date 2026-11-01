@@ -25,7 +25,7 @@
    "coupled": null,
    "length_m": 30.12,
    "propulsion": "electric",
-   "years": "2013–2014",
+   "years": "2013-2014",
    "spec_source": "https://transphoto.org/list.php?t=1&cid=396&serv=0",
    "sections_estimated": true
   },
@@ -50,7 +50,7 @@
    "coupled": null,
    "length_m": 30.1,
    "propulsion": "electric",
-   "years": "2019–2020",
+   "years": "2019-2020",
    "spec_source": "https://transphoto.org/list.php?t=1&cid=396&serv=0",
    "sections_estimated": true
   },
@@ -75,7 +75,7 @@
    "coupled": null,
    "length_m": 30.1,
    "propulsion": "electric",
-   "years": "2022–2023",
+   "years": "2022-2023",
    "spec_source": "https://transphoto.org/list.php?t=1&cid=396&serv=0",
    "sections_estimated": true
   },
@@ -121,7 +121,7 @@
    "coupled": null,
    "length_m": 14.5,
    "propulsion": "electric",
-   "years": "1990–1991",
+   "years": "1990-1991",
    "spec_source": "https://transphoto.org/list.php?t=1&cid=396&serv=0",
    "sections_estimated": false
   },
@@ -144,7 +144,7 @@
    "coupled": null,
    "length_m": 26.62,
    "propulsion": "electric",
-   "years": "2007–2009",
+   "years": "2007-2009",
    "spec_source": "https://transphoto.org/list.php?t=1&cid=396&serv=0",
    "sections_estimated": true
   },
@@ -167,7 +167,7 @@
    "coupled": null,
    "length_m": 26.0,
    "propulsion": "electric",
-   "years": "1990–1991 (low-floor centre 1997–99)",
+   "years": "1990-1991 (low-floor centre 1997-99)",
    "spec_source": "https://transphoto.org/list.php?t=1&cid=396&serv=0",
    "sections_estimated": true
   },
@@ -190,10 +190,10 @@
    "coupled": null,
    "length_m": 26.53,
    "propulsion": "electric",
-   "years": "2010–2014 (rebuilt)",
+   "years": "2010-2014 (rebuilt)",
    "spec_source": "https://transphoto.org/list.php?t=1&cid=396&serv=0",
    "sections_estimated": true,
-   "source_note": "transphoto.org lists 501–511 as Т8М-500 F (2010–2014 rebuilds)"
+   "source_note": "transphoto.org lists 501-511 as Т8М-500 F (2010-2014 rebuilds)"
   },
   {
    "type": "tram",
@@ -214,10 +214,10 @@
    "coupled": null,
    "length_m": 26.53,
    "propulsion": "electric",
-   "years": "2012–2014 (rebuilt from T8M-900M / T6M-700)",
+   "years": "2012-2014 (rebuilt from T8M-900M / T6M-700)",
    "spec_source": "https://transphoto.org/list.php?t=1&cid=396&serv=0",
    "sections_estimated": true,
-   "source_note": "transphoto.org lists these as Т8М-900 F (2012–2014 rebuilds)"
+   "source_note": "transphoto.org lists these as Т8М-900 F (2012-2014 rebuilds)"
   },
   {
    "type": "tram",
@@ -277,7 +277,7 @@
    "coupled": 2,
    "length_m": 14.7,
    "propulsion": "electric",
-   "years": "1995–1997",
+   "years": "1995-1997",
    "spec_source": "https://transphoto.org/list.php?t=1&cid=396&serv=0",
    "sections_estimated": false
   },
@@ -300,7 +300,7 @@
    "coupled": null,
    "length_m": 26.6,
    "propulsion": "electric",
-   "years": "1960–1969",
+   "years": "1960-1969",
    "spec_source": "https://transphoto.org/list.php?t=1&cid=396&serv=0",
    "sections_estimated": true
   },
@@ -369,7 +369,7 @@
    "coupled": null,
    "length_m": 16.5,
    "propulsion": "electric",
-   "years": "1985–2009 (rebuilt)",
+   "years": "1985-2009 (rebuilt)",
    "spec_source": "https://transphoto.org/list.php?t=2&cid=396&serv=0",
    "sections_estimated": true
   },
@@ -436,7 +436,7 @@
    "coupled": null,
    "length_m": 18.0,
    "propulsion": "electric",
-   "years": "2013–2014",
+   "years": "2013-2014",
    "spec_source": "https://transphoto.org/list.php?t=2&cid=396&serv=0",
    "sections_estimated": true
   },
@@ -458,7 +458,7 @@
    "coupled": null,
    "length_m": 18.0,
    "propulsion": "electric",
-   "years": "2020–2021",
+   "years": "2020-2021",
    "spec_source": "https://transphoto.org/list.php?t=2&cid=396&serv=0",
    "sections_estimated": true
   },
@@ -488,7 +488,7 @@
    "coupled": null,
    "length_m": 17.98,
    "propulsion": "CNG",
-   "years": "2014–2015",
+   "years": "2014-2015",
    "spec_source": "https://fotobus.msk.ru/list.php?loid=2235",
    "sections_estimated": true
   },
@@ -626,7 +626,7 @@
    "coupled": null,
    "length_m": 12.0,
    "propulsion": "CNG",
-   "years": "2017–2018 (7041–7163), 2020 (7165–7171)",
+   "years": "2017-2018 (7041-7163), 2020 (7165-7171)",
    "spec_source": "https://fotobus.msk.ru/list.php?loid=2235",
    "sections_estimated": false
   },
@@ -781,7 +781,7 @@
    "coupled": null,
    "length_m": 12.0,
    "propulsion": "battery",
-   "years": "2021–2023",
+   "years": "2021-2023",
    "spec_source": "https://transphoto.org/list.php?t=9&cid=396&serv=0",
    "sections_estimated": false
   },
@@ -848,7 +848,7 @@
    "coupled": null,
    "length_m": 17.5,
    "propulsion": "diesel",
-   "years": "1998–1999",
+   "years": "1998-1999",
    "spec_source": "https://fotobus.msk.ru/list.php?loid=2235",
    "sections_estimated": true
   },
@@ -869,7 +869,7 @@
    "coupled": null,
    "length_m": 12.96,
    "propulsion": "diesel",
-   "years": "2011–2012",
+   "years": "2011-2012",
    "spec_source": "https://fotobus.msk.ru/list.php?loid=2235",
    "sections_estimated": false
   },

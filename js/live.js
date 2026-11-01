@@ -534,7 +534,7 @@
     const byRoute = new Map();
     for (const v of parked) byRoute.set(v.route, (byRoute.get(v.route) || 0) + 1);
     let html = `<div class="card-head"><span class="kind-badge">${ST.kindIcon(d.kind, 22)}</span><div><div class="card-title">${d.name ? esc(d.name) : t("depot")}</div>` +
-      `<div class="card-sub">${t("kinds_" + d.kind)} · ${t("parkedN", { n: parked.length })} · ${t("simulated")}</div></div></div>`;
+      `<div class="card-sub">${t("kinds_" + d.kind)}, ${t("parkedN", { n: parked.length })}, ${t("simulated")}</div></div></div>`;
     html += `<div class="chips-row">${[...byRoute].sort((a, b) => b[1] - a[1]).map(([r, n]) => `${chip(r)}<span class="muted small">×${n}</span>`).join(" ")}</div>`;
     return html + `<p class="small muted">${t("depotNote")}</p>`;
   }
@@ -654,7 +654,7 @@
     if (!m) return html + fact(t("model"), t("unknownModel"));
     html += fact(t("model"), esc(m.model) + (m.years ? ` <span class="muted">(${esc(m.years)})</span>` : ""));
     const total = m.length_m || sectionsFor(v).reduce((a, b) => a + b, 0);
-    if (total) html += fact(t("length"), `${(+total).toFixed(1)} m${m.coupled > 1 ? ` × ${m.coupled}` : ""}${sectionsFor(v).length > 1 ? ` · ${sectionsFor(v).length} ${ST.lang === "bg" ? "секции" : "sections"}` : ""}`);
+    if (total) html += fact(t("length"), `${(+total).toFixed(1)} m${m.coupled > 1 ? ` × ${m.coupled}` : ""}${sectionsFor(v).length > 1 ? `, ${sectionsFor(v).length} ${ST.lang === "bg" ? "секции" : "sections"}` : ""}`);
     if (m.low_floor != null) html += fact(t("lowFloor"), m.low_floor === "partial" ? t("partialLowFloor") : m.low_floor ? t("yes") : t("no"));
     if (m.ac != null) html += fact(t("ac"), m.ac ? t("yes") : t("no"));
     return html;
@@ -666,14 +666,14 @@
     const r = ROUTES[v.routeId], sp = v.simPattern, run = v.runIdx != null ? v.runs[v.runIdx] : null;
     const toTime = s => ST.hhmmEpoch(ST.clock.now() - (v.sec - s) * 1000);
     let html = `<div class="card-head">${r ? chip(v.routeId) : ""}<div><div class="card-title">${sp && !OUT_OF_SERVICE.has(v.status) ? `${t("toward")} ${esc(placeName(sp.head))}` : t("st_" + v.status)}</div>` +
-      `<div class="card-sub">${t("kind_" + v.kind)} · ${t("simulated")} · ${t("duty")} ${esc(v.duty)}</div></div></div><div class="facts">`;
+      `<div class="card-sub">${t("kind_" + v.kind)}, ${t("simulated")}, ${t("duty")} ${esc(v.duty)}</div></div></div><div class="facts">`;
     html += fact(t("state"), t("st_" + v.status));
     let next = -1;
     if (run && v.leg.i != null) next = v.leg.type === "shape" ? v.leg.i : v.leg.i;
     if (run && next >= 0 && next < run.p.stops.length && !OUT_OF_SERVICE.has(v.status)) {
       const st = STOPS[run.p.stops[next]];
       const delay = run.times[next] - (run.start + run.p.t[next]);
-      html += fact(t("nextStop"), `${st ? esc(stopName(st)) : ""} · ${toTime(run.times[next])}`);
+      html += fact(t("nextStop"), `${st ? esc(stopName(st)) : ""}, ${toTime(run.times[next])}`);
       html += fact(t("delay"), Math.abs(delay) < 60 ? t("onTime") : delay > 0 ? t("late", { m: Math.round(delay / 60) }) : t("early", { m: Math.round(-delay / 60) }));
     }
     if (v.speed) html += fact(t("speed"), `${Math.round(v.speed)} ${t("kmh")}`);
@@ -701,7 +701,7 @@
     const r = ROUTES[v.routeId], p = v.pattern;
     const age = Math.max(0, Math.round((Date.now() - v.fixes.at(-1).t) / 1000));
     let html = `<div class="card-head">${r ? chip(v.routeId) : ""}<div><div class="card-title">${p ? `${t("toward")} ${esc(placeName(p.h))}` : esc(v.routeId)}</div>` +
-      `<div class="card-sub">${t("kind_" + v.kind)} · ${esc(v.id.replace(/^\D+/, ""))} · ${t("lastUpdate", { s: age })}</div></div></div>`;
+      `<div class="card-sub">${t("kind_" + v.kind)}, ${esc(v.id.replace(/^\D+/, ""))}, ${t("lastUpdate", { s: age })}</div></div></div>`;
     if (age >= STALE) html += `<p class="small warn-note">${t("gpsLost", { m: Math.round(age / 60) })}</p>`;
     html += `<div class="facts">`;
     const tu = tripUpdates && tripUpdates.byTrip.get(v.tripId);
@@ -711,7 +711,7 @@
     if (nextIdx >= 0) {
       const st = STOPS[p.s[nextIdx]];
       const pred = tu && tu.stops.find(x => x.stopId === st.id);
-      html += fact(t("nextStop"), `${esc(stopName(st))}${pred && pred.time ? ` · ${minsText((pred.time - Date.now()) / 1000)}` : ""}`);
+      html += fact(t("nextStop"), `${esc(stopName(st))}${pred && pred.time ? `, ${minsText((pred.time - Date.now()) / 1000)}` : ""}`);
     }
     if (v.speed != null) html += fact(t("speed"), `${Math.round(v.speed)} ${t("kmh")}`);
     const delay = tu && (tu.delay ?? tu.stops.find(x => x.delay)?.delay);
@@ -852,7 +852,7 @@
     const only = ST.filters.lines.size === 1 && ST.filters.lines.has(r);
     html += `<div class="card-actions"><button class="btn" data-action="only-line" data-line="${r}">${only ? t("showAllLines") : t("showLineOnly")}</button></div>`;
     for (const [, p] of dirs) {
-      html += `<details><summary>${t("toward")} ${esc(placeName(p.h))} <span class="muted">· ${p.s.length}</span></summary><ol class="stoplist compact">` +
+      html += `<details><summary>${t("toward")} ${esc(placeName(p.h))} <span class="muted">, ${p.s.length}</span></summary><ol class="stoplist compact">` +
         p.s.map(si => `<li><span class="dot"></span><a href="#" class="grow" data-action="live-stop" data-id="${STOPS[si].id}">${esc(stopName(STOPS[si]))}</a></li>`).join("") + `</ol></details>`;
     }
     return html;
@@ -913,7 +913,7 @@
       if (name === qLine || (qLine.length >= 1 && name.startsWith(qLine))) {
         const dirs = lineDirections(r).map(([, p]) => placeName(p.h));
         out.push({ score: name === qLine ? 95 : 70, icon: chip(r), label: `${t("kind_" + kindOf(r))} ${esc(ROUTES[r].name)}`,
-          sub: esc(dirs.slice(0, 2).join(" ⇄ ")), action: () => openLine(r) });
+          sub: esc(dirs.slice(0, 2).join(" - ")), action: () => openLine(r) });
       }
     }
     if (/^\d{3,4}$/.test(q)) {
@@ -937,7 +937,7 @@
         seenNames.set(s.name, n + 1);
         if (n >= 4) continue;
         out.push({ score: sc, icon: ST.kindIcon(baseKind(s.routes[0]) || "bus", 22), label: esc(stopName(s)),
-          sub: `${t("stop")} ${s.code} · ${s.routes.slice(0, 6).map(chip).join(" ")}`,
+          sub: `${t("stop")} ${s.code}, ${s.routes.slice(0, 6).map(chip).join(" ")}`,
           action: () => { openStop(s.id); ST.focus([s.lat, s.lon], 16.5); } });
       }
     }
