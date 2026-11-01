@@ -4,6 +4,35 @@ A live map of Sofia's public transport, inspired by [livetransport.eu](https://l
 
 **Live site:** https://jukfiuune.github.io/sofia-metro/
 
+## Apps and shared core
+
+The repo is a Kotlin Multiplatform monorepo. One Kotlin core is shared by an Android app, an iOS app and the website.
+
+| Folder | What it is |
+|---|---|
+| `shared/` | Kotlin Multiplatform library. `commonMain/kotlin/io/github/jukfiuune/sofiatransit/` has `model` (one Line / Stop / Vehicle model for every mode), `data` (generated data and the GTFS-realtime feed), `time` (Sofia time, service days), `metro` (metro simulation), `sim` (surface simulation) and `planner` (walking graph and connection scan). `androidMain`, `iosMain` and `jsMain` hold the platform parts; `jsMain` also has the API the website calls. |
+| `androidApp/` | Android app: Jetpack Compose, Material 3 with dynamic colour on Android 12+ and a metro-blue fallback. Line and mode colours are fixed. |
+| `iosApp/` | iOS app (SwiftUI). Placeholder until it is built on a Mac with Xcode 27.1+. |
+| `web/` | The website: hand-written HTML, CSS and JS. `web/data` links to `data/`. |
+| `pipeline/` | Python scripts that build `data/` from GTFS and OpenStreetMap. |
+| `data/` | Generated data, bundled by the apps and loaded by the website. |
+| `recorder/`, `analysis/` | Live feed recorder and its analysis. |
+
+So far only `time` is in Kotlin. Porting the website's logic (model, GTFS-realtime reader, metro and surface simulation, planner) into `shared` is the next step.
+
+### Build
+
+Needs JDK 21 and the Android SDK (`ANDROID_HOME`, for example `~/Android/Sdk` with platform 37 and build-tools 37). No IDE is needed.
+
+```bash
+./gradlew :shared:allTests                         # shared tests (JVM host, JS; iOS on a Mac)
+./gradlew :shared:jsBrowserProductionLibraryDistribution  # shared core as a JS library for the website
+./gradlew :androidApp:assembleDebug                # Android debug APK
+./gradlew :androidApp:installDebug                 # install on a running emulator or phone
+```
+
+Emulators are made with `avdmanager` and started with `emulator -avd <name>`. Gradle and the emulator are kept to small heaps (`gradle.properties`, 2 GB guest RAM) so both fit on a 16 GB machine; close other large apps before running both.
+
 ## Data
 
 - **Live vehicles:** the official GTFS-realtime feeds of the Sofia Urban Mobility Center (`https://gtfs.sofiatraffic.bg/api/v1/vehicle-positions` and `trip-updates`). They allow cross-site requests, so the browser reads them directly and no server is needed.

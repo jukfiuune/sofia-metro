@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Градски транспорт София</string>
+    <string name="time_in_sofia">Часът в София</string>
+    <string name="service_day">Ден на разписанието %1$s</string>
+    <string name="lines">Линии</string>
+    <string name="shared_core">Общо ядро на %1$s</string>
+</resources>

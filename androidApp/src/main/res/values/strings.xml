@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sofia Transit</string>
+    <string name="time_in_sofia">Time in Sofia</string>
+    <string name="service_day">Service day %1$s</string>
+    <string name="lines">Lines</string>
+    <string name="shared_core">Shared core on %1$s</string>
+</resources>

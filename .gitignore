@@ -11,3 +11,16 @@ analysis/out/
 __pycache__/
 data/osm/
 .venv/
+# Gradle / Kotlin / Android
+.gradle/
+.kotlin/
+build/
+local.properties
+*.apk
+*.aab
+captures/
+.idea/
+*.iml
+# Xcode
+iosApp/**/xcuserdata/
+iosApp/**/DerivedData/
