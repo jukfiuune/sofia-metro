@@ -73,6 +73,9 @@
     stopSim: ["Спри симулацията", "Stop simulation"], destination: ["Пристигане", "Arrive"],
     crossings: ["пресичания: {n}", "crossings: {n}"], predicted: ["по прогноза", "predicted"],
     youAreHere: ["Вие", "You"],
+    changeTo: ["Прекачване на {l} — {p}", "Change to {l} at {p}"], throughStation: ["през станцията", "inside the station"],
+    missed: ["Превозното средство е изпуснато — търся нов маршрут", "Missed the vehicle — finding a new trip"],
+    newTrip: ["Нов маршрут", "New trip"],
   });
   panel.querySelector(".panel-close").addEventListener("click", () => ST.showPanel(null));
   const $ = id => document.getElementById(id);
@@ -473,6 +476,18 @@
     }
     return out;
   }
+  /**
+   * Interchanges: metro stations of different lines within 250 m (Сердика / Сердика 2, НДК / НДК 2,
+   * Орлов мост / Софийски университет) are joined by passages inside the station, so changing
+   * there takes a minute plus the corridor, without going out to the street and back in.
+   */
+  const INTERCHANGE = 250;
+  function interchange(a, b) {
+    const S = stops(), A = S[a], B = S[b];
+    if (!A.metro || !B.metro) return null;
+    const d = Math.hypot(A.xy[0] - B.xy[0], A.xy[1] - B.xy[1]);
+    return d <= INTERCHANGE ? 60 + d * 1.5 / WALK : null;
+  }
   const footCache = new Map();
   function footpaths(si, mode) {
     const key = `${mode.speed}|${mode.jay ? 1 : 0}`;
@@ -481,7 +496,14 @@
     if (!c.has(si)) {
       const s = stops()[si];
       // Out of a metro station first (STATION), then walk; access() adds STATION into others.
-      c.set(si, access(s.pts, mode, TRANSFER * WALK / mode.speed).filter(([j]) => j !== si).map(([j, w]) => [j, w + (s.metro ? STATION : 0)]));
+      const list = access(s.pts, mode, TRANSFER * WALK / mode.speed).filter(([j]) => j !== si).map(([j, w]) => [j, w + (s.metro ? STATION : 0)]);
+      if (s.metro) for (const o of stops()) {
+        const w = o.metro && o.i !== si ? interchange(si, o.i) : null;
+        if (w == null) continue;
+        const e = list.find(x => x[0] === o.i);
+        if (e) e[1] = Math.min(e[1], w); else list.push([o.i, w]);
+      }
+      c.set(si, list);
     }
     return c.get(si);
   }
@@ -490,7 +512,7 @@
   // Each connection: from stop, to stop, departure and arrival (s of the service day), trip key, position in trip.
   let conns = null;
   function connections(date, live) {
-    const key = date + (live ? "|live" + Math.floor(Date.now() / 30000) : "");
+    const key = date + (live ? "|live" + Math.floor(Date.now() / 30000) : "") + "|" + (ST.metroTrains ? ST.metroTrains.delay : 0);
     if (conns && conns.key === key) return conns;
     const X = ST.transit, day = ST.sim.dutiesFor(date);
     const fc = live ? X.liveForecasts(Date.now()) : null;
@@ -510,12 +532,14 @@
     }
     // Metro, from the timetable.
     const cal = MD.calendars.map(c => new Set(c));
-    MD.trips.forEach(([pi, start, ci]) => {
+    // Trains run late by the metro delay setting, as they are drawn.
+    const late = ST.metroTrains ? ST.metroTrains.delay : 0;
+    MD.trips.forEach(([pi, start, ci], id) => {
       if (!cal[ci].has(date)) return;
       const p = MD.patterns[pi], tk = trips.length;
-      trips.push({ kind: "metro", route: p.route, head: p.headsign, p, start });
+      trips.push({ kind: "metro", id, route: p.route, head: p.headsign, p, start: start + late });
       for (let i = 0; i < p.stops.length - 1; i++)
-        list.push([metroIndex(p.stops[i]), metroIndex(p.stops[i + 1]), start + p.arr[i] + (p.dw ? p.dw[i] : 0), start + p.arr[i + 1], tk, i]);
+        list.push([metroIndex(p.stops[i]), metroIndex(p.stops[i + 1]), start + late + p.arr[i] + (p.dw ? p.dw[i] : 0), start + late + p.arr[i + 1], tk, i]);
     });
     list.sort((a, b) => a[2] - b[2]);
     conns = { key, list, trips };
@@ -593,16 +617,17 @@
   // ---------- Search ----------
   let results = null, shown = null;
   const resultsEl = $("plan-results");
-  $("plan-go").addEventListener("click", () => search());
-  async function search() {
+  $("plan-go").addEventListener("click", () => { stopSim(); search(); });
+  async function search(atMs) {
     $("plan-suggest").hidden = true;
     if (!ends.a || !ends.b) { resultsEl.innerHTML = `<div class="empty">${t("noTrips")}</div>`; return; }
     resultsEl.innerHTML = `<div class="empty">${t(W ? "planning" : "planLoading")}</div>`;
     try { await load(); } catch (e) { resultsEl.innerHTML = `<div class="empty">${t("simFailed")}</div>`; return; }
     await new Promise(r => setTimeout(r, 20));
     let ms;
-    const live = opts.when === "now" && ST.clock.isRealtime();
-    if (opts.when === "now") ms = ST.clock.now();
+    const live = !atMs && opts.when === "now" && ST.clock.isRealtime();
+    if (atMs) ms = atMs;
+    else if (opts.when === "now") ms = ST.clock.now();
     else {
       const m = $("plan-at").value.match(/^(\d+)-(\d+)-(\d+)T(\d+):(\d+)/);
       if (!m) return;
@@ -677,6 +702,16 @@
     j.transfers = Math.max(0, j.legs.filter(l => l.type === "ride").length - 1);
     for (let k = 0; k < j.legs.length; k++) {
       const l = j.legs[k];
+      if (l.type === "walk" && l.from !== "A" && l.to !== "B" && interchange(l.from, l.to) != null) {
+        // A change inside the metro: straight through the passage.
+        const a = S[l.from], b = S[l.to], w = interchange(l.from, l.to);
+        l.change = true;
+        l.path = { pts: [a.ll, b.ll], len: Math.hypot(a.xy[0] - b.xy[0], a.xy[1] - b.xy[1]), time: w, cross: { signal: 0, marked: 0, jaywalk: 0 } };
+        l.walkTime = w; l.runTime = w;
+        const next = j.legs[k + 1];
+        l.t1 = next ? Math.min(next.t0, l.t0 + w) : l.t0 + w;
+        continue;
+      }
       if (l.type === "walk") {
         const path = walkPath(place(l.from), place(l.to), walkMode);
         l.path = path;
@@ -726,7 +761,7 @@
   }
   function summary(j) {
     const chips = j.legs.map(l => l.type === "ride" ? ST.lineChip(lineOf(l))
-      : `<span class="plan-walk">🚶${mins(l.t1 - l.t0)}</span>`).join('<span class="plan-sep">›</span>');
+      : l.change ? '<span class="plan-walk">⇄</span>' : `<span class="plan-walk">🚶${mins(l.t1 - l.t0)}</span>`).join('<span class="plan-sep">›</span>');
     const flags = [j.needsRun ? `<span class="plan-flag run">${t("needsRun")}</span>` : "", j.jaywalk ? `<span class="plan-flag jay">${t("hasJaywalk")}</span>` : ""].join("");
     return `<div class="plan-times"><b>${fmt(j.depart)} – ${fmt(j.arrive)}</b><span>${mins(j.arrive - j.depart)} ${t("min")}</span></div>
       <div class="plan-chips">${chips}</div>
@@ -754,6 +789,13 @@
     $("plan-form").hidden = true;
     const steps = [];
     j.legs.forEach((l, k) => {
+      if (l.change) {
+        const nx = j.legs[k + 1], line = nx && nx.type === "ride" ? lineOf(nx) : null;
+        steps.push(`<div class="plan-step walk" data-plan="leg" data-k="${k}"><span class="plan-time">${fmt(l.t0)}</span>
+          <span class="plan-ico">⇄</span><span class="grow"><b>${esc(t("changeTo", { l: line ? line.name : "", p: placeLabel(l.to) }))}</b>
+          <span class="plan-sub">${t("throughStation")} · ${mins(l.t1 - l.t0)} ${t("min")}</span></span></div>`);
+        return;
+      }
       if (l.type === "walk") {
         const to = l.to === "B" ? ends.b.label : placeLabel(l.to);
         const cr = l.path.cross.signal + l.path.cross.marked + l.path.cross.jaywalk;
@@ -854,11 +896,17 @@
   }
 
   // ---------- Simulating a trip ----------
-  let simActive = false, me = null, follow = true;
+  // The marker walks its walks in the planned time and rides the vehicle actually drawn on
+  // the map: it waits at the stop until that vehicle comes, stays on it, and gets off when it
+  // reaches the alighting stop. If the vehicle has already left, the trip is planned again
+  // from that stop at that moment, and the marker carries on with the new trip.
+  let simActive = false, me = null, follow = true, run = null;
+  const newRun = j => ({ k: 0, start: j.legs[0].t0, last: -Infinity, busy: false });
   function startSim(j) {
     if (!j) return;
     simActive = true;
     follow = true;
+    run = newRun(j);
     ST.clock.live = false;
     ST.clock.set(j.midnight + (j.depart - 60) * 1000, 10);
     ST.emit("clock"); ST.invalidate();
@@ -885,47 +933,82 @@
     const seg = cum[k] - cum[k - 1] || 1, g = (s - cum[k - 1]) / seg;
     return ll(P[k - 1][0] + (P[k][0] - P[k - 1][0]) * g, P[k - 1][1] + (P[k][1] - P[k - 1][1]) * g);
   }
-  function positionAt(j, sec) {
-    const legs = j.legs;
-    if (sec <= legs[0].t0) return { ll: legs[0].type === "walk" ? legs[0].path.pts[0] : ridePoints(legs[0])[0], k: 0 };
-    for (let k = 0; k < legs.length; k++) {
-      const l = legs[k], next = legs[k + 1];
-      if (sec < l.t1) {
-        const f = (sec - l.t0) / Math.max(1, l.t1 - l.t0);
-        if (l.type === "walk") return { ll: along(l.path.pts, f), k };
-        // Riding: follow the simulated vehicle if we have it, else the stop times.
-        const tr = tripOf(l);
-        if (tr.kind === "sim" && tr.p.d) {
-          const times = tr.v.runs[tr.ri].times;
-          let i = l.i0;
-          while (i < l.i1 && times[i + 1] <= sec) i++;
-          const a = times[i], b = times[i + 1] != null ? times[i + 1] : a + 1;
-          const g = Math.max(0, Math.min(1, (sec - a) / Math.max(1, b - a)));
-          const sh = ST.transit.shape(tr.p.shape);
-          if (sh) return { ll: ST.transit.along(sh, tr.p.d[i] + (tr.p.d[i + 1] - tr.p.d[i]) * (g * g * (3 - 2 * g))).ll, k };
-        }
-        return { ll: along(ridePoints(l), f), k };
+  /**
+   * The vehicle of ride leg l as drawn at ms: when it leaves the boarding stop (dep) and reaches
+   * the alighting stop (arr), in service-day seconds, and where it is now (ll, when drawn).
+   */
+  function vehicleOn(l, ms) {
+    const tr = tripOf(l);
+    if (tr.kind === "sim") {
+      const v = ST.sim.vehicleAt(tr.v.name, ms);
+      const r = (v && v.runs[tr.ri] && v.runs[tr.ri].times) ? v.runs[tr.ri] : tr.v.runs[tr.ri];
+      const onIt = v && v.runIdx === tr.ri && v.sDisp != null && v.sDisp >= tr.p.d[l.i0] - 3;
+      return { dep: r.times[l.i0], arr: r.times[l.i1], ll: onIt ? v.ll : null };
+    }
+    const m = ST.metroTrains && ST.metroTrains.onTrip(tr.id, ms);
+    const p = tr.p;
+    // Timetable times; a drawn train held back by the one ahead tells where it really is.
+    let dep = tr.start + p.arr[l.i0] + (p.dw ? p.dw[l.i0] : 0), arr = tr.start + p.arr[l.i1];
+    if (m) {
+      if (m.d < p.pd[l.i0] - 3) dep = Math.max(dep, (ms - shown.midnight) / 1000 + 1);
+      if (m.d < p.pd[l.i1] - 3) arr = Math.max(arr, (ms - shown.midnight) / 1000 + 1);
+    }
+    return { dep, arr, ll: m && m.d >= p.pd[l.i0] - 3 ? m.ll : null };
+  }
+  /** Advance the simulated traveller to service-day second sec; returns {ll, k, done, missed}. */
+  function stepRun(j, ms, sec) {
+    const legs = j.legs, S = stops();
+    if (sec < run.last - 2) Object.assign(run, newRun(j));       // the clock went back
+    run.last = sec;
+    for (let guard = 0; guard <= legs.length; guard++) {
+      const l = legs[run.k];
+      if (!l) return { ll: ends.b.ll, k: legs.length - 1, done: true };
+      if (l.type === "walk") {
+        const dur = Math.max(1, l.t1 - l.t0);
+        if (sec < run.start) return { ll: l.path.pts[0], k: run.k };
+        const f = (sec - run.start) / dur;
+        if (f < 1) return { ll: along(l.path.pts, f), k: run.k };
+        run.start += dur; run.k++;
+        continue;
       }
-      if (next && sec < next.t0) {
-        const end = l.type === "walk" ? l.path.pts[l.path.pts.length - 1] : ridePoints(l).slice(-1)[0];
-        return { ll: end, k, waiting: true };
+      // Riding: at the stop from run.start; the vehicle must not have left before that.
+      const o = vehicleOn(l, ms), from = S[l.from].ll;
+      if (o.dep == null || o.dep < run.start - 5) return { ll: from, k: run.k, missed: true };
+      if (sec < o.dep) return { ll: from, k: run.k };
+      if (sec < o.arr) {
+        if (o.ll) return { ll: o.ll, k: run.k };
+        return { ll: along(ridePoints(l), (sec - o.dep) / Math.max(1, o.arr - o.dep)), k: run.k };
       }
+      run.k++; run.start = o.arr;
     }
     return { ll: ends.b.ll, k: legs.length - 1, done: true };
   }
+  async function replan(j, k, ms) {
+    run.busy = true;
+    ST.toast(t("missed"));
+    const l = j.legs[k], S = stops();
+    setEnd("a", { ll: S[l.from].ll, label: S[l.from].name() });
+    await search(ms);
+    if (!simActive) return;
+    const next = results && results[0];
+    if (!next) { stopSim(); return; }
+    showTrip(next);
+    run = newRun(next);
+  }
   ST.addLayer({
     frame(ctx) {
-      if (!simActive || !shown || !me) return;
+      if (!simActive || !shown || !me || run.busy) return;
       const sec = (ctx.ms - shown.midnight) / 1000;
-      const p = positionAt(shown, sec);
+      const p = stepRun(shown, ctx.ms, sec);
       me.setLatLng(p.ll);
+      if (p.missed) { replan(shown, p.k, ctx.ms); return; }
       if (follow && ctx.slow) ST.focus(p.ll);
       if (ctx.slow) document.querySelectorAll(".plan-step[data-k]").forEach(el => el.classList.toggle("now", +el.dataset.k === p.k && !p.done));
-      if (p.done && sec > shown.arrive + 60) ST.clock.set(ctx.ms, 1);
+      if (p.done) ST.clock.set(ctx.ms, 1);
     },
   });
 
   ST.on("panel", name => { if (name === "plan") load(); });
   ST.on("lang", () => { if (shown) showTrip(shown); else if (results) renderResults(); });
-  window.planDebug = { load, snap, walkPath, scan, connections, get W() { return W; }, stops, get results() { return results; }, ends, setEnd, search };
+  window.planDebug = { load, snap, walkPath, scan, connections, get W() { return W; }, stops, get results() { return results; }, get shown() { return shown; }, vehicleOn, tripOf, ends, setEnd, search };
 })();

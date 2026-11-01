@@ -228,6 +228,15 @@
     return out;
   }
 
+  /** One duty (by name) as drawn at ms, live forecast included, or null when it isn't out. */
+  function vehicleAt(name, ms) {
+    const [date, sec] = serviceDay(ms);
+    const day = dutiesFor(date);
+    const ho = handover && handover.date === date && sec >= handover.sec ? handover.byDuty : null;
+    const v = (ho && ho.get(name)) || day.byName.get(name);
+    return v && stateAt(v, sec) ? v : null;
+  }
+
   /** Predicted departures at a stop: [{time (epoch ms), route, head, v}] for the next `horizon` s. */
   function departures(stopIdx, ms, horizon = 3600) {
     const [date, sec] = serviceDay(ms);
@@ -286,6 +295,6 @@
     return day.byName.get(`${route}${run}${svc}`) || day.byName.get(`${route}-run${run}`) || null;
   }
 
-  ST.sim = { ready: true, label: S.label, depots, vehiclesAt, departures, parkedAt, serviceDay, dutiesFor, dutyOfTrip, forecast, stateAt, setHandover };
+  ST.sim = { ready: true, label: S.label, depots, vehiclesAt, vehicleAt, departures, parkedAt, serviceDay, dutiesFor, dutyOfTrip, forecast, stateAt, setHandover };
   ST.emit("sim");
 })();

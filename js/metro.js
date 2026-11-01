@@ -1458,6 +1458,18 @@
   const trainMarkers = new Map(); // vehicle key -> {marker, cls, ...}
   const states = new Map();       // vehicle key -> {v, st, sec} as of the last frame
   window.metroDebug = { map, vehiclesFor, vehicleState, paths, pathAt, trainMarkers };
+  // For the trip planner: the train drawn on timetable trip `id` (index in D.trips) at ms, if any.
+  ST.metroTrains = {
+    get delay() { return timetableDelay; },
+    onTrip(id, ms) {
+      const [date, sec] = vehicleDay(ms - timetableDelay * 1000);
+      for (const v of vehiclesFor(date)) {
+        const st = vehicleState(v, sec);
+        if (st && st.kind === "trip" && st.leg.trip.id === id) return { ll: pathAt(st.P, st.d).ll, d: st.d, pd: st.leg.trip.p.pd };
+      }
+      return null;
+    },
+  };
 
   function trainIcon(route) {
     const r = D.routes[route];
