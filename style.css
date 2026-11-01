@@ -276,3 +276,53 @@ summary { cursor: pointer; padding: 10px 2px; font-weight: 700; }
 @media (min-width: 701px) {
   body.card-open .leaflet-bottom.leaflet-right { right: 392px; }
 }
+
+/* ---------- Trip planner ---------- */
+.plan-ends { position: relative; display: flex; flex-direction: column; gap: 6px; margin: 10px 0 8px; padding-right: 38px; }
+.plan-end { display: flex; align-items: center; gap: 8px; }
+.plan-end input { flex: 1; }
+#plan-swap { position: absolute; right: 0; top: 50%; transform: translateY(-50%); font-size: 20px; }
+.pin { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-weight: 800; font-size: 12px; color: #fff; flex: none; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
+.pin.a { background: #1a73e8; }
+.pin.b { background: #d93025; }
+.plan-pin { background: none; border: 0; }
+.plan-pin .pin { width: 26px; height: 26px; font-size: 13px; }
+.plan-suggest { max-height: 40vh; margin: 0 -10px 8px; padding: 0; border-bottom: 1px solid var(--border); }
+.plan-sicon { width: 22px; text-align: center; flex: none; color: var(--muted); font-size: 18px; }
+.plan-go { width: 100%; margin-top: 8px; }
+body.plan-picking #map { cursor: crosshair; }
+.plan-trip { display: block; width: 100%; text-align: left; border: 1px solid var(--border); background: var(--surface); border-radius: 12px; padding: 10px 12px; margin: 8px 0; cursor: pointer; color: var(--fg); font: inherit; }
+.plan-trip:hover { background: var(--hover); }
+.plan-trip.static { cursor: default; }
+.plan-trip.static:hover { background: var(--surface); }
+.plan-times { display: flex; justify-content: space-between; align-items: baseline; font-variant-numeric: tabular-nums; }
+.plan-times b { font-size: 17px; }
+.plan-times span { color: var(--muted); font-weight: 600; }
+.plan-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 6px 0 4px; }
+.plan-chips .line-chip { height: 22px; min-width: 30px; font-size: 13px; }
+.plan-walk { font-size: 13px; color: var(--muted); font-weight: 600; }
+.plan-sep { color: var(--muted); font-size: 12px; }
+.plan-meta { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.plan-flag { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 6px; padding: 1px 6px; }
+.plan-flag.run { background: #fde4d4; color: #a33c00; }
+.plan-flag.jay { background: #fdf0c2; color: #7a5a00; }
+[data-theme=dark] .plan-flag.run { background: #4a2a17; color: #ffb47e; }
+[data-theme=dark] .plan-flag.jay { background: #423712; color: #f3d36b; }
+.plan-detail-head { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.plan-steps { display: flex; flex-direction: column; margin-top: 4px; }
+.plan-step { display: flex; gap: 10px; align-items: flex-start; padding: 8px 4px; border-left: 3px solid transparent; }
+.plan-step[data-plan] { cursor: pointer; }
+.plan-step[data-plan]:hover { background: var(--hover); }
+.plan-step.ride { border-left-color: var(--c); }
+.plan-step.walk { border-left: 3px dotted var(--muted); }
+.plan-step.walk.running { border-left-color: #e8590c; }
+.plan-step.now { background: var(--hover); box-shadow: inset 3px 0 0 var(--accent); }
+.plan-time { width: 42px; flex: none; font-weight: 700; font-variant-numeric: tabular-nums; }
+.plan-ico { width: 40px; flex: none; text-align: center; }
+.plan-ico .line-chip { min-width: 34px; }
+.plan-step .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.plan-sub { font-size: 13px; color: var(--muted); }
+.plan-off { font-size: 13px; font-weight: 600; }
+.plan-me { background: none; border: 0; }
+.plan-me-dot { display: block; width: 18px; height: 18px; margin: 2px; border-radius: 50%; background: #1a73e8; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(26, 115, 232, 0.25), 0 1px 4px rgba(0, 0, 0, 0.4); }
+.row[hidden] { display: none; }

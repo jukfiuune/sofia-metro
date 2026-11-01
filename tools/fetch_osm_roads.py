@@ -46,6 +46,16 @@ def tile_query(south, west, north, east):
 out geom;"""
 
 
+def walk_query(south, west, north, east):
+    """Paths only people use (pavements, footpaths, steps, squares) and the nodes where
+    they may cross a road: marked crossings and traffic lights."""
+    return f"""[out:json][timeout:600];
+(way["highway"~"^(footway|path|pedestrian|steps|cycleway|track|corridor|bridleway|platform)$"]["access"!~"^(private|no)$"]["foot"!~"^(no|private)$"]({south},{west},{north},{east});
+ node["highway"~"^(crossing|traffic_signals)$"]({south},{west},{north},{east});
+ node["railway"~"^(crossing|tram_crossing|tram_level_crossing|level_crossing)$"]({south},{west},{north},{east}););
+out geom;"""
+
+
 def fetch(query, name):
     path = OUT / f"{name}.json"
     if path.exists():
@@ -85,6 +95,8 @@ def main():
             s, w = SOUTH + r * dlat, WEST + c * dlon
             name = f"roads-{r}-{c}"
             print(f"{name}: {fetch(tile_query(s, w, s + dlat, w + dlon), name)}", flush=True)
+            name = f"walk-{r}-{c}"
+            print(f"{name}: {fetch(walk_query(s, w, s + dlat, w + dlon), name)}", flush=True)
 
 
 if __name__ == "__main__":

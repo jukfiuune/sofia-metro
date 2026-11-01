@@ -250,19 +250,25 @@
   // Leaving real time (speed-up or a later time today): hand each live vehicle over to
   // its forecast, keeping its marker id, model and position, so nothing jumps.
   let wasRealtime = true;
+  /** Each tracked vehicle's duty re-planned from where it is drawn now: Map(duty name -> forecast). */
+  function liveForecasts(now) {
+    const byDuty = new Map();
+    if (!ST.sim) return byDuty;
+    for (const v of vehicles.values()) {
+      if (!v.tripId || (feedTime - v.fixes.at(-1).t) / 1000 > LOST) continue;
+      // Start exactly where the vehicle is drawn now (LAG behind its latest fix).
+      const fc = v.sDisp != null ? ST.sim.forecast(v.tripId, v.sDisp, now - LAG) : forecastOf(v);
+      const duty = ST.sim.dutyOfTrip(v.tripId, now);
+      if (!fc || !duty) continue;
+      Object.assign(fc, { id: v.id, live: v, model: v.model, kindBase: v.kindBase, name: duty.name, duty: duty.duty });
+      byDuty.set(duty.name, fc);
+    }
+    return byDuty;
+  }
   ST.on("clock", () => {
     const realtime = ST.clock.isRealtime();
     if (wasRealtime && !realtime && ST.sim) {
-      const now = Date.now(), byDuty = new Map();
-      for (const v of vehicles.values()) {
-        if (!v.tripId || (feedTime - v.fixes.at(-1).t) / 1000 > LOST) continue;
-        // Start exactly where the vehicle is drawn now (LAG behind its latest fix).
-        const fc = v.sDisp != null ? ST.sim.forecast(v.tripId, v.sDisp, now - LAG) : forecastOf(v);
-        const duty = ST.sim.dutyOfTrip(v.tripId, now);
-        if (!fc || !duty) continue;
-        Object.assign(fc, { id: v.id, live: v, model: v.model, kindBase: v.kindBase, name: duty.name, duty: duty.duty });
-        byDuty.set(duty.name, fc);
-      }
+      const now = Date.now(), byDuty = liveForecasts(now);
       const [date, sec] = ST.sim.serviceDay(now);
       ST.sim.setHandover(date, sec - LAG / 1000, byDuty);
       // Live vehicles are drawn LAG behind real time; start the simulated clock there too.
@@ -939,7 +945,8 @@
   });
 
   // Shared with the simulation (js/sim.js).
-  ST.transit = { ROUTES, STOPS, PATTERNS, shape, along, kindOf };
+  ST.transit = { ROUTES, STOPS, PATTERNS, shape, along, kindOf, lineInfo, stopName, placeName, esc, liveForecasts,
+    loadSim, get feedOk() { return !!lastOk && (Date.now() - lastOk) / 1000 < 30; } };
 
   window.liveDebug = { vehicles, shape, project, PATTERNS, fetchTripUpdates, get tripUpdates() { return tripUpdates; } };
 })();

@@ -69,13 +69,37 @@ A live map of Sofia's public transport, inspired by [livetransport.eu](https://l
 
 GTFS route shapes are drawn by the transit authority and often run beside the real street, cut corners or skip loops. `tools/match_shapes.py` map-matches every shape onto OpenStreetMap, so lines, vehicles and bodies sit on the streets the map draws.
 
-- **Data:** `tools/fetch_osm_roads.py` downloads roads (with one-way rules and bus or trolleybus exemptions), tram tracks, depots and route relations for Sofia and its suburbs. It fetches in tiles over several Overpass mirrors and resumes after interruptions.
+- **Data:** `tools/extract_osm.py` cuts roads (with one-way rules and bus or trolleybus exemptions), tram tracks, footpaths and crossings, depots and route relations for Sofia and its suburbs out of Geofabrik's Bulgaria extract (about 170 MB, a few minutes to download, a minute to read). It needs pyosmium in a virtual environment:
+
+  ```
+  python3 -m venv .venv && .venv/bin/pip install osmium
+  curl -L -o data/osm/bulgaria-latest.osm.pbf https://download.geofabrik.de/europe/bulgaria-latest.osm.pbf
+  .venv/bin/python tools/extract_osm.py
+  ```
+
+  `tools/fetch_osm_roads.py` fetches the same data from Overpass instead, in tiles over several mirrors. It's slower, and the public servers often fail under load.
 - **Matching:** the matcher is a hidden Markov model. Buses and trolleybuses use roads in their legal direction; trams use tram tracks.
 - **Route relations:** where a line has an OSM route relation (495 of 517 shapes), its ways are preferred. Relations are often more detailed than GTFS (exact lanes, tracks, loops) but can be out of date, so the GTFS shape still decides where the line goes.
 - **Clean-up:** back-and-forth spikes from starting on the wrong lane are removed. A match is rejected, keeping the GTFS shape, if less than 85% of the route matched or its length differs by more than 15%.
 - **Result:** 516 of 517 shapes are on OSM geometry. Every matched shape stays within 45 m of its GTFS original, and 10,740 of 10,743 trip stops are within 40 m of their placed point.
 - **Where it's used:** `build_transit.py` and the analysis loader use `data/osm_shapes.json` when it exists.
 - **Depots:** they come from OSM: Столичен електротранспорт's tram depots (Искър, Банишора, Красна поляна, Клокотница) and trolleybus depots (Искър, Левски, Надежда), the Малашевци and Дружба bus garages, МТК's garage, and Земляне, located from its e-bus chargers. Build the simulation with `--depots osm`.
+
+## Trip planner (planner branch)
+
+The route button on the left rail plans door-to-door trips by foot, bus, tram, trolleybus and metro.
+
+- **Places:** start and destination can be a stop or metro station (by name or code), your location, or a point picked on the map. The A and B pins can be dragged.
+- **When:** leave now, or at any date and time. "Now" in real time uses where live vehicles actually are. Any other time uses the simulation's predicted times, and the metro timetable.
+- **Walking:** it follows the real pedestrian network from OSM (`data/walk.js`, built by `tools/build_walk.py`, about 2.6 MB compressed and loaded when the planner opens):
+  - **Main roads have two sides.** Trunk, primary and secondary roads, and wide or one-way tertiary roads, are split into a pavement on each side. Walking along the road keeps to one side, and stops snap to the side they are on.
+  - **Crossings:** people cross at traffic lights (counted as a 25 s wait) and pedestrian crossings. Pavements mapped as separate footways replace walking beside the road.
+- **Options:**
+  - **I can run:** also look for trips that are faster if you run. Each walk then shows how much of it to run ("run the last 170 m"), and the map marks that stretch in orange. Trips needing more than 400 m of running in one go are dropped.
+  - **Cross anywhere (jaywalking):** allows crossing main roads away from crossings, at junctions and every 50 m, with a 12 s wait. It's off by default; the app notes that it's against the rules and dangerous, and marks trips that use it.
+- **Results:** up to six trips: the earliest arrival, one with fewer changes, later departures, a faster one with running, and walking all the way when that takes under 75 minutes. Duplicate trips and trips another one beats are removed. Each trip lists its steps with times, stops, crossings and waits; tapping a step zooms the map to it.
+- **Simulate the trip:** plays the trip on the map at 10× with the simulation clock. A marker walks the paths and rides with the vehicles, the current step is highlighted, and the map follows.
+- **How:** connection scan over every vehicle's predicted stop times for the service day. Walking times come from Dijkstra on the pedestrian network: to the stops around the start and destination, and between stops up to 8 minutes apart, cached per walking mode.
 
 ## Simulation (planner branch)
 

@@ -10,3 +10,4 @@ analysis/.cache/
 analysis/out/
 __pycache__/
 data/osm/
+.venv/

@@ -520,7 +520,7 @@
 
   // ---------- Public API ----------
   window.ST = {
-    store, t, get lang() { return lang; }, get dark() { return isDark(); }, TZ,
+    store, t, addStrings(obj) { Object.assign(STRINGS, obj); applyI18n(); }, get lang() { return lang; }, get dark() { return isDark(); }, TZ,
     sofiaParts, ymd, shiftDay, hhmm, hhmmEpoch, clockAt, clock,
     map, metresPerPixel, invalidate, on, emit,
     addLayer(layer) { layers.push(layer); },
