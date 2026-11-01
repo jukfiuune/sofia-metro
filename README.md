@@ -94,6 +94,8 @@ The route button on the left rail plans door-to-door trips by foot, bus, tram, t
 - **Walking:** it follows the real pedestrian network from OSM (`data/walk.js`, built by `tools/build_walk.py`, about 2.6 MB compressed and loaded when the planner opens):
   - **Main roads have two sides.** Trunk, primary and secondary roads, and wide or one-way tertiary roads, are split into a pavement on each side. Walking along the road keeps to one side, and stops snap to the side they are on.
   - **Crossings:** people cross at traffic lights (counted as a 25 s wait) and pedestrian crossings. Pavements mapped as separate footways replace walking beside the road.
+  - **Metro stations** are reached through their nearest mapped entrance (284 entrances over all 50 stations), plus 2 minutes to the platform.
+  - **Snapping:** points (your start, a tapped spot, stops) never snap to road sides OSM marks as having no pavement, such as the median side of a dual carriageway.
 - **Options:**
   - **I can run:** also look for trips that are faster if you run. Each walk then shows how much of it to run ("run the last 170 m"), and the map marks that stretch in orange. Trips needing more than 400 m of running in one go are dropped.
   - **Cross anywhere (jaywalking):** allows crossing main roads away from crossings, at junctions and every 50 m, with a 12 s wait. It's off by default; the app notes that it's against the rules and dangerous, and marks trips that use it.

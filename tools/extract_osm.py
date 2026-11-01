@@ -3,7 +3,7 @@
 same files tools/fetch_osm_roads.py fetches from Overpass (data/osm/):
 
   roads-all.json   drivable roads, tram and light rail tracks (map matching, walking)
-  walk-all.json    footpaths, steps, platforms, and the nodes where people cross roads
+  walk-all.json    footpaths, steps, platforms, the nodes where people cross roads, metro entrances
   routes.json      bus, trolleybus and tram route relations
   depots.json      depot areas and bus stations
 
@@ -47,7 +47,7 @@ class Extract(osmium.SimpleHandler):
             return
         t = dict(n.tags)
         el = {"type": "node", "id": n.id, "lat": n.location.lat, "lon": n.location.lon, "tags": t}
-        if CROSS_NODE.match(t.get("highway", "")) or t.get("railway") in RAIL_CROSS:
+        if CROSS_NODE.match(t.get("highway", "")) or t.get("railway") in RAIL_CROSS or t.get("railway") == "subway_entrance":
             self.walk.append(el)
         if self.is_depot(t):
             self.depots.append(el)

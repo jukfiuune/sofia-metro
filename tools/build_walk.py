@@ -45,11 +45,13 @@ def xy(lat, lon):
 
 
 def main():
-    pos, ways, crossing = {}, {}, {}
+    pos, ways, crossing, entrances = {}, {}, {}, []
     for f in sorted(glob.glob(str(OSM / "roads-*.json")) + glob.glob(str(OSM / "outer-*.json")) + glob.glob(str(OSM / "walk-*.json"))):
         for e in json.loads(Path(f).read_text(encoding="utf-8"))["elements"]:
             t = e.get("tags", {})
             if e["type"] == "node":
+                if t.get("railway") == "subway_entrance":
+                    entrances.append((e["lat"], e["lon"]))
                 hw, cr = t.get("highway"), t.get("crossing", "")
                 if cr == "no":
                     continue
@@ -260,6 +262,16 @@ def main():
             prev = (prev[0] + round(x - prev[0]), prev[1] + round(y - prev[1]))
     starts.append(len(geo) // 2)
 
+    # Metro entrances by station: each goes to the nearest station within 400 m.
+    md = (ROOT / "data" / "metro.js").read_text(encoding="utf-8")
+    stations = json.loads(md[md.index("=") + 1:].strip().rstrip(";"))["stations"]
+    by_station = {}
+    for la, lo in sorted(set(entrances)):
+        best = min(stations.items(), key=lambda kv: math.dist(xy(la, lo), xy(*(kv[1].get("plat") or [kv[1]["lat"], kv[1]["lon"]]))))
+        sid, st = best
+        if math.dist(xy(la, lo), xy(*(st.get("plat") or [st["lat"], st["lon"]]))) <= 400:
+            by_station.setdefault(sid, []).append([round(la, 6), round(lo, 6)])
+
     data = {
         "built": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "origin": [LAT0, LON0],
@@ -267,6 +279,7 @@ def main():
         "edges": flat,               # a, b, length (m, steps counted longer), wait (s), flags
         "geoStart": starts,          # edge i's intermediate points are geo[geoStart[i] .. geoStart[i+1]) (pairs)
         "geo": geo,                  # points as deltas from the previous point, starting at node a
+        "entrances": by_station,     # metro station id -> [[lat, lon], ...] of its entrances
         "flags": {"steps": F_STEPS, "signal": F_SIGNAL, "marked": F_MARKED, "jaywalk": F_JAYWALK, "roadside": F_ROADSIDE},
     }
     out = ROOT / "data" / "walk.js"
@@ -274,6 +287,7 @@ def main():
     n_j = sum(1 for i in keep if edges[i][4] & F_JAYWALK)
     n_c = sum(1 for i in keep if edges[i][4] & (F_SIGNAL | F_MARKED))
     print(f"{len(used)} nodes, {len(keep)} edges ({n_c} crossings, {n_j} jaywalk crossings), {len(geo) // 2} shape points")
+    print(f"{sum(map(len, by_station.values()))} metro entrances at {len(by_station)} of {len(stations)} stations")
     print(f"Wrote {out} ({out.stat().st_size // 1024} KB)")
 
 

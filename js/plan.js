@@ -232,9 +232,10 @@
       pts.push([nx[eb[e]], ny[eb[e]]]);
       return pts;
     };
-    // Grid of edges for snapping points to the network (crossings excluded).
+    // Grid of edges for snapping points to the network: not crossings, and not road sides
+    // without a pavement (often a dual carriageway's median side).
     const CELL = 150, grid = new Map();
-    const crossFlags = F.signal | F.marked | F.jaywalk;
+    const crossFlags = F.signal | F.marked | F.jaywalk | F.roadside;
     for (let e = 0; e < m; e++) {
       if (ef[e] & crossFlags) continue;
       const pts = shapeOf(e);
@@ -247,7 +248,7 @@
       for (const c of cells) { let a = grid.get(c); if (!a) grid.set(c, a = []); a.push(e); }
     }
     W = { n, m, nx, ny, ea, eb, elen, ewait, ef, adj, deg, shapeOf, grid, CELL, F,
-      dist: new Float64Array(n).fill(Infinity), prev: new Int32Array(n).fill(-1), touched: [] };
+      dist: new Float64Array(n).fill(Infinity), prev: new Int32Array(n).fill(-1), seed: new Int32Array(n), touched: [] };
   }
 
   /** Nearest point of the walking network: {e, d (m off the network), fa, fb (m along the edge to a / b), pt}. */
@@ -315,15 +316,20 @@
   const edgeCost = (e, mode) => W.elen[e] / mode.speed + W.ewait[e];
   const allowed = (e, mode) => mode.jay || !(W.ef[e] & W.F.jaywalk);
 
-  /** Dijkstra from a snapped point; fills W.dist / W.prev (seconds) up to `limit`. */
-  function walkFrom(sn, mode, limit) {
+  /**
+   * Dijkstra from snapped points (a place can have several, like a station's entrances);
+   * fills W.dist / W.prev (seconds) up to `limit`, and W.seed: which source a start node came from.
+   */
+  function walkFrom(sns, mode, limit) {
     for (const i of W.touched) { W.dist[i] = Infinity; W.prev[i] = -1; }
     W.touched = [];
     heap.n = 0;
-    const off = sn.d / mode.speed;
-    const seed = (node, c) => { if (c < W.dist[node]) { if (W.dist[node] === Infinity) W.touched.push(node); W.dist[node] = c; W.prev[node] = -2; hpush(c, node); } };
-    seed(W.ea[sn.e], off + sn.fa / mode.speed);
-    seed(W.eb[sn.e], off + sn.fb / mode.speed);
+    const seed = (node, c, k) => { if (c < W.dist[node]) { if (W.dist[node] === Infinity) W.touched.push(node); W.dist[node] = c; W.prev[node] = -2; W.seed[node] = k; hpush(c, node); } };
+    sns.forEach((sn, k) => {
+      const off = sn.d / mode.speed;
+      seed(W.ea[sn.e], off + sn.fa / mode.speed, k);
+      seed(W.eb[sn.e], off + sn.fb / mode.speed, k);
+    });
     while (heap.n) {
       const kk = heap.k[0], u = hpop();
       if (kk > W.dist[u]) continue;
@@ -340,58 +346,75 @@
       }
     }
   }
-  /** Walking time (s) from the last walkFrom() source to a snapped point. */
-  function timeTo(sn, mode, src) {
+  /** Walking time (s) from the last walkFrom() sources to a snapped point. */
+  function timeTo(sn, mode, srcs) {
     const off = sn.d / mode.speed;
     let best = Math.min(W.dist[W.ea[sn.e]] + sn.fa / mode.speed, W.dist[W.eb[sn.e]] + sn.fb / mode.speed);
-    if (src && src.e === sn.e) best = Math.min(best, Math.abs(src.fa - sn.fa) / mode.speed + src.d / mode.speed);
+    for (const src of srcs) if (src.e === sn.e) best = Math.min(best, (Math.abs(src.fa - sn.fa) + src.d) / mode.speed);
     return best + off;
   }
 
-  /** Walking path between two points: {pts (lat/lon), len (m), time (s at mode speed), cross: {signal, marked, jaywalk}}. */
-  function walkPath(pa, pb, mode) {
-    const sa = snap(pa), sb = snap(pb);
-    const [ax, ay] = xy(pa), [bx, by] = xy(pb);
-    const straight = { pts: [pa, pb], len: Math.hypot(ax - bx, ay - by) * 1.3, cross: { signal: 0, marked: 0, jaywalk: 0 } };
-    if (!sa || !sb) return { ...straight, time: straight.len / mode.speed };
-    walkFrom(sa, mode, straight.len * 2.5 / mode.speed + 900);
-    const viaA = W.dist[W.ea[sb.e]] + sb.fa / mode.speed, viaB = W.dist[W.eb[sb.e]] + sb.fb / mode.speed;
+  /**
+   * Walking path between two places, each a list of points (a station has one per entrance):
+   * {pts (lat/lon), len (m), time (s at mode speed), cross: {signal, marked, jaywalk}}.
+   */
+  function walkPath(PA, PB, mode) {
+    const A = PA.map(p => [p, snap(p)]).filter(x => x[1]), B = PB.map(p => [p, snap(p)]).filter(x => x[1]);
     const cross = { signal: 0, marked: 0, jaywalk: 0 };
-    let pts = [], len = sa.d + sb.d;
-    if (sa.e === sb.e && (Math.abs(sa.fa - sb.fa) + sa.d) / mode.speed <= Math.min(viaA, viaB)) {
+    if (!A.length || !B.length) {
+      const [ax, ay] = xy(PA[0]), [bx, by] = xy(PB[0]), len = Math.hypot(ax - bx, ay - by) * 1.3;
+      return { pts: [PA[0], PB[0]], len, time: len / mode.speed, cross };
+    }
+    let far = 0;
+    for (const [pa] of A) for (const [pb] of B) { const [ax, ay] = xy(pa), [bx, by] = xy(pb); far = Math.max(far, Math.hypot(ax - bx, ay - by)); }
+    const sas = A.map(x => x[1]);
+    walkFrom(sas, mode, far * 1.3 * 2.5 / mode.speed + 900);
+    // Best end point, and whether it is reached along one edge straight from a start point.
+    let best = null;
+    for (const [pb, sb] of B) {
+      const viaA = W.dist[W.ea[sb.e]] + sb.fa / mode.speed, viaB = W.dist[W.eb[sb.e]] + sb.fb / mode.speed;
+      const cand = [[viaA, "a"], [viaB, "b"]];
+      A.forEach(([, sa], k) => { if (sa.e === sb.e) cand.push([(Math.abs(sa.fa - sb.fa) + sa.d) / mode.speed, "same", k]); });
+      for (const [c, how, k] of cand) {
+        const tt = c + sb.d / mode.speed;
+        if (!best || tt < best.time) best = { time: tt, how, k, pb, sb };
+      }
+    }
+    const { pb, sb } = best;
+    let pts, len = sb.d, pa;
+    if (best.how === "same") {
+      const sa = A[best.k][1];
+      pa = A[best.k][0];
       pts = [ll(...sa.pt), ll(...sb.pt)];
-      len += Math.abs(sa.fa - sb.fa);
+      len += sa.d + Math.abs(sa.fa - sb.fa);
     } else {
-      let node = viaA <= viaB ? W.ea[sb.e] : W.eb[sb.e];
-      len += viaA <= viaB ? sb.fa : sb.fb;
-      // Partial last edge from the node to the end point.
-      const tail = [];
+      let node = best.how === "a" ? W.ea[sb.e] : W.eb[sb.e];
+      len += best.how === "a" ? sb.fa : sb.fb;
       const pe = W.shapeOf(sb.e);
-      const lastPart = W.ea[sb.e] === node ? cut(pe, sb.pt, true) : cut(pe, sb.pt, false).reverse();
-      tail.push(...lastPart);
+      const tail = W.ea[sb.e] === node ? cut(pe, sb.pt, true) : cut(pe, sb.pt, false).reverse();
       const chain = [];
       while (W.prev[node] >= 0) {
         const e = W.prev[node];
-        let s = W.shapeOf(e);
-        if (W.eb[e] !== node) s = s.reverse();
-        chain.push(s);
+        let sh = W.shapeOf(e);
+        if (W.eb[e] !== node) sh = sh.reverse();
+        chain.push(sh);
         len += W.elen[e];
         if (W.ef[e] & W.F.signal) cross.signal++;
         if (W.ef[e] & W.F.marked) cross.marked++;
         if (W.ef[e] & W.F.jaywalk) cross.jaywalk++;
         node = W.ea[e] === node ? W.eb[e] : W.ea[e];
       }
+      const [pa0, sa] = A[W.seed[node]];
+      pa = pa0;
       const ps = W.shapeOf(sa.e);
-      const firstPart = W.ea[sa.e] === node ? cut(ps, sa.pt, true).reverse() : cut(ps, sa.pt, false);
-      len += W.ea[sa.e] === node ? sa.fa : sa.fb;
-      const all = [...firstPart];
+      const first = W.ea[sa.e] === node ? cut(ps, sa.pt, true).reverse() : cut(ps, sa.pt, false);
+      len += sa.d + (W.ea[sa.e] === node ? sa.fa : sa.fb);
+      const all = [...first];
       for (let k = chain.length - 1; k >= 0; k--) all.push(...chain[k]);
       all.push(...tail);
       pts = all.map(p => ll(...p));
     }
-    pts = [pa, ...pts, pb];
-    // W.dist already counts the walk onto the network at the start (sa.d).
-    return { pts, len, time: Math.min(viaA, viaB, sa.e === sb.e ? (Math.abs(sa.fa - sb.fa) + sa.d) / mode.speed : Infinity) + sb.d / mode.speed, cross };
+    return { pts: [pa, ...pts, pb], len, time: best.time, cross };
   }
   /** Part of an edge shape from its start to point p (fromStart) or from p to its end. */
   function cut(pts, p, fromStart) {
@@ -413,9 +436,12 @@
     if (STOPS) return STOPS;
     const X = ST.transit;
     STOPS = X.STOPS.map((s, i) => ({ i, ll: [s.lat, s.lon], name: () => X.stopName(s), code: s.code, metro: false }));
-    for (const st of metroStations()) STOPS.push({ i: STOPS.length, ll: st.ll, name: () => st.label, metro: true, mid: st.id });
+    // A metro station is reached through any of its entrances (or its platform when none are mapped).
+    const ent = (window.WALK_DATA && WALK_DATA.entrances) || {};
+    for (const st of metroStations()) STOPS.push({ i: STOPS.length, ll: st.ll, pts: ent[st.id] && ent[st.id].length ? ent[st.id] : [st.ll], name: () => st.label, metro: true, mid: st.id });
     stopGrid = new Map();
     for (const s of STOPS) {
+      if (!s.pts) s.pts = [s.ll];
       s.xy = xy(s.ll);
       const c = `${Math.floor(s.xy[0] / SG)},${Math.floor(s.xy[1] / SG)}`;
       let a = stopGrid.get(c); if (!a) stopGrid.set(c, a = []); a.push(s);
@@ -423,24 +449,27 @@
     return STOPS;
   }
   const metroIndex = id => stops().find(s => s.mid === id).i;
-  function stopsNear(p, radius) {
-    const [x, y] = xy(p), out = [], r = Math.ceil(radius / SG);
-    const cx = Math.floor(x / SG), cy = Math.floor(y / SG);
-    for (let i = cx - r; i <= cx + r; i++) for (let j = cy - r; j <= cy + r; j++)
-      for (const s of stopGrid.get(`${i},${j}`) || []) if (Math.hypot(s.xy[0] - x, s.xy[1] - y) <= radius) out.push(s);
-    return out;
+  /** Stops with a point (entrance) within `radius` m of any of the points P. */
+  function stopsNear(P, radius) {
+    const out = new Set(), reach = radius + 400;          // station entrances lie up to 400 m from its centre
+    for (const p of P) {
+      const [x, y] = xy(p), r = Math.ceil(reach / SG), cx = Math.floor(x / SG), cy = Math.floor(y / SG);
+      for (let i = cx - r; i <= cx + r; i++) for (let j = cy - r; j <= cy + r; j++)
+        for (const s of stopGrid.get(`${i},${j}`) || [])
+          if (Math.hypot(s.xy[0] - x, s.xy[1] - y) <= reach && s.pts.some(q => { const [qx, qy] = xy(q); return Math.hypot(qx - x, qy - y) <= radius; })) out.add(s);
+    }
+    return [...out];
   }
-  /** Walking times from a point to the stops around it: [[stop index, seconds]]. */
-  function access(p, mode, limit) {
-    const sn = snap(p);
-    if (!sn) return [];
-    walkFrom(sn, mode, limit);
+  /** Walking times from a place (list of points) to the stops around it: [[stop index, seconds]]. */
+  function access(P, mode, limit) {
+    const sns = P.map(snap).filter(Boolean);
+    if (!sns.length) return [];
+    walkFrom(sns, mode, limit);
     const out = [];
-    for (const s of stopsNear(p, limit * mode.speed / 1.1)) {
-      const ss = snap(s.ll);
-      if (!ss) continue;
-      const w = timeTo(ss, mode, sn) + (s.metro ? STATION : 0);
-      if (w <= limit + (s.metro ? STATION : 0)) out.push([s.i, w]);
+    for (const s of stopsNear(P, limit * mode.speed / 1.1)) {
+      let w = Infinity;
+      for (const q of s.pts) { const ss = snap(q); if (ss) w = Math.min(w, timeTo(ss, mode, sns)); }
+      if (w <= limit) out.push([s.i, w + (s.metro ? STATION : 0)]);
     }
     return out;
   }
@@ -452,7 +481,7 @@
     if (!c.has(si)) {
       const s = stops()[si];
       // Out of a metro station first (STATION), then walk; access() adds STATION into others.
-      c.set(si, access(s.ll, mode, TRANSFER * WALK / mode.speed).filter(([j]) => j !== si).map(([j, w]) => [j, w + (s.metro ? STATION : 0)]));
+      c.set(si, access(s.pts, mode, TRANSFER * WALK / mode.speed).filter(([j]) => j !== si).map(([j, w]) => [j, w + (s.metro ? STATION : 0)]));
     }
     return c.get(si);
   }
@@ -506,7 +535,7 @@
     const tripIn = new Map();                     // trip -> connection index boarded
     // Running covers the same distances as walking, only faster.
     const lim = reach * WALK / mode.speed;
-    const accA = access(A, mode, lim), accB = new Map(access(B, mode, lim));
+    const accA = access([A], mode, lim), accB = new Map(access([B], mode, lim));
     for (const [s, w] of accA) if (t0 + w < arr[s]) { arr[s] = t0 + w; how[s] = { foot: -1, w }; }
     let best = Infinity, end = null;
     const list = C.list;
@@ -610,7 +639,7 @@
       if (fast && (!first || fast.arrive < first.arrive - 30)) add(fast, true);
     }
     // On foot all the way.
-    const direct = walkPath(ends.a.ll, ends.b.ll, walkMode);
+    const direct = walkPath([ends.a.ll], [ends.b.ll], walkMode);
     if (direct.time < 75 * 60) found.push({ legs: [{ type: "walk", from: "A", to: "B", t0: sec, t1: sec + direct.time }], arrive: sec + direct.time, walkOnly: true, sig: "walk" });
     for (const j of found) finish(j, walkMode, runMode, midnight, sec);
     // Nobody sprints a kilometre for a bus: drop trips that need more than MAX_RUN of running in one go.
@@ -643,7 +672,7 @@
   /** Fill in places, walking paths, waits and where running is needed. */
   function finish(j, walkMode, runMode, midnight, sec) {
     const S = stops(), X = ST.transit;
-    const place = s => s === "A" ? ends.a.ll : s === "B" ? ends.b.ll : S[s].ll;
+    const place = s => s === "A" ? [ends.a.ll] : s === "B" ? [ends.b.ll] : S[s].pts;
     j.midnight = midnight;
     j.transfers = Math.max(0, j.legs.filter(l => l.type === "ride").length - 1);
     for (let k = 0; k < j.legs.length; k++) {
