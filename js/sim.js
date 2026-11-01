@@ -136,7 +136,7 @@
         const run = Math.max(1, full * Math.max(0, Math.min(1, frac)));
         legs.push({ type: "shape", t0: t, t1: t + run, shape: p.shape, s0: a, s1: p.d[i], run: runs.length, i });
         t += run;
-        times.push(t);
+        times[i] = t;
         if (i < n - 1) {
           const dw = dwellAt(p.stops[i], dtype, Math.floor((t % 86400) / 3600));
           legs.push({ type: "hold", t0: t, t1: t + dw, at: stopXY(p.stops[i]), status: "stop", run: runs.length, i });
